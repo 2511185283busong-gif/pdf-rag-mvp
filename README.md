@@ -202,6 +202,139 @@ python3 scripts/tfidf_wording_experiment.py chunks/resume2_chunks.json \
 对比时主要观察：同义改写是否仍能找到同一个 Chunk，中文问题能否检索英文
 Chunk，以及重复关键词的假 Chunk 是否仍会排在第一。
 
+## Rerank 二阶段重排
+
+语义检索先用 embedding 快速召回一批候选 chunk，再用 cross-encoder
+同时读取“问题 + 候选 chunk”来重新打分：
+
+```bash
+.venv/bin/python scripts/rerank_search.py \
+  chunks/resume2_chunks.json \
+  "Has he built a system that moves and transforms data?" \
+  --candidate-k 20 \
+  --top-k 3
+```
+
+默认流程：
+
+- 第一阶段：`intfloat/multilingual-e5-small` 做 dense embedding 召回。
+- 第二阶段：`cross-encoder/mmarco-mMiniLMv2-L12-H384-v1` 做 rerank。
+- 输出会同时显示 `rerank_score`、原始 embedding `base_rank` 和
+  `base_similarity`，方便观察重排前后的变化。
+- 不使用向量数据库，不调用 LLM。
+- 默认只使用项目 `.models/` 里的本地缓存，避免离线时等待网络重试。
+- 如果本地还没有模型，联网时加 `--allow-download` 下载一次。
+
+可以替换 rerank 模型：
+
+```bash
+.venv/bin/python scripts/rerank_search.py \
+  chunks/resume2_chunks.json \
+  "RAG retrieval optimization" \
+  --rerank-model cross-encoder/ms-marco-MiniLM-L6-v2 \
+  --allow-download
+```
+
+## Context Builder
+
+Rerank 之后，可以把 Top-K chunk 整理成可直接喂给 LLM 的上下文：
+
+```bash
+.venv/bin/python scripts/context_builder.py \
+  chunks/resume2_chunks.json \
+  "他做过什么数据处理项目？" \
+  --candidate-k 3 \
+  --top-k 3
+```
+
+输出会包含：
+
+- `Context`：按 rerank 顺序排列的 chunk 正文。
+- `[S1]`、`[S2]` 这样的 source id，方便回答时引用。
+- `pages`：原 PDF 页码。
+- `rerank`、`base_rank`：方便检查为什么这些 chunk 被选进上下文。
+
+也可以直接生成一个完整 prompt：
+
+```bash
+.venv/bin/python scripts/context_builder.py \
+  chunks/resume2_chunks.json \
+  "他做过什么数据处理项目？" \
+  --candidate-k 3 \
+  --top-k 3 \
+  --prompt
+```
+
+如果要给后续程序读取，用 JSON：
+
+```bash
+.venv/bin/python scripts/context_builder.py \
+  chunks/resume2_chunks.json \
+  "他做过什么数据处理项目？" \
+  --candidate-k 3 \
+  --top-k 3 \
+  --json
+```
+
+如果本地还没有 embedding 或 rerank 模型，第一次运行时加：
+
+```bash
+--allow-download
+```
+
+## DeepSeek 生成答案
+
+Context Builder 之后，可以接 DeepSeek API 生成最终回答。
+
+先创建本地 `.env`：
+
+```bash
+cp .env.example .env
+```
+
+然后把 `.env` 里的 `DEEPSEEK_API_KEY` 改成你的 DeepSeek API key。
+`.env` 已经在 `.gitignore` 里，不会被提交。
+
+运行问答：
+
+```bash
+.venv/bin/python scripts/answer_question.py \
+  chunks/resume2_chunks.json \
+  "他做过什么数据处理项目？" \
+  --candidate-k 3 \
+  --top-k 1
+```
+
+默认使用：
+
+- API base URL：`https://api.deepseek.com`
+- LLM：`deepseek-v4-flash`
+- thinking：`disabled`
+- 输入上下文：来自 `context_builder.py` 的 `[S1]`、`pages` 和 chunk 正文
+
+如果想打开 thinking：
+
+```bash
+.venv/bin/python scripts/answer_question.py \
+  chunks/resume2_chunks.json \
+  "他做过什么数据处理项目？" \
+  --candidate-k 3 \
+  --top-k 1 \
+  --thinking enabled \
+  --reasoning-effort high
+```
+
+如果想输出 JSON：
+
+```bash
+.venv/bin/python scripts/answer_question.py \
+  chunks/resume2_chunks.json \
+  "他做过什么数据处理项目？" \
+  --candidate-k 3 \
+  --top-k 1 \
+  --json
+```
+
 ## 当前边界
 
 - 可以处理内置文字层的 PDF。

@@ -17,7 +17,7 @@ Run the evaluation after creating the lecture chunks:
   --top-k 3
 ```
 
-## Result
+## Results
 
 Evaluation configuration:
 
@@ -25,13 +25,27 @@ Evaluation configuration:
 - 10 manually verified questions.
 - `intfloat/multilingual-e5-small` for dense recall.
 - `cross-encoder/mmarco-mMiniLMv2-L12-H384-v1` for reranking.
-- Top 10 recall candidates and Top 3 final results.
+- Top 3 final results.
 
-| Method | Hit@3 | MRR@3 |
-| --- | ---: | ---: |
-| Dense embedding only | 0.60 | 0.55 |
-| Dense embedding plus rerank | 0.80 | 0.70 |
+| Candidate K | Method | Hit@3 | MRR@3 |
+| ---: | --- | ---: | ---: |
+| 10 | Dense embedding only | 0.70 | 0.60 |
+| 10 | Dense embedding plus rerank | 0.90 | 0.80 |
+| 20 | Dense embedding plus rerank | 1.00 | 0.7833 |
+| 36 | Dense embedding plus rerank | 1.00 | 0.80 |
 
-Reranking recovered the correct evidence for the ABT remote-calls and AWC
-completeness questions. It did not recover every labelled case, so this is a
-small benchmark result rather than a general performance claim.
+Increasing Candidate K gives reranking more recall candidates to inspect. On
+this 36-chunk lecture, K=20 is sufficient to place evidence for every labelled
+question in the final Top 3. K=36 is a diagnostic full-rerank setting, not a
+practical default for larger collections.
+
+K=20 improves coverage over K=10, but its MRR is slightly lower because some
+correct chunks move from rank 1 to rank 2 or 3. Candidate K is therefore a
+recall-versus-ranking-cost tradeoff, not a value that always improves every
+metric.
+
+The Filtering limitation case accepts both chunks 0002 and 0003: the relevant
+slide is page 14, which occurs at their chunk boundary. This keeps the labels
+aligned with the evidence rather than treating a valid overlap hit as a miss.
+
+This is a small benchmark result rather than a general performance claim.

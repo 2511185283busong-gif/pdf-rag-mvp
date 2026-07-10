@@ -11,7 +11,10 @@
     {
       "id": "filtering-limitation",
       "query": "Filtering 算法无法检测什么情况？",
-      "relevant_chunk_ids": ["Lecture 8b Distributed Constraints_chunk_0003"],
+      "relevant_chunk_ids": [
+        "Lecture 8b Distributed Constraints_chunk_0002",
+        "Lecture 8b Distributed Constraints_chunk_0003"
+      ],
       "verified_pages": [14]
     },
     {

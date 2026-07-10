@@ -1,0 +1,66 @@
+{
+  "schema_version": "0.1.0",
+  "notes": "Labels were manually verified against Lecture 8b Distributed Constraints. verified_pages records the source slide containing the answer; relevant_chunk_ids records the expected retrieval evidence.",
+  "cases": [
+    {
+      "id": "dcsp-definition",
+      "query": "分布式约束满足问题（DCSP）的定义是什么？",
+      "relevant_chunk_ids": ["Lecture 8b Distributed Constraints_chunk_0001"],
+      "verified_pages": [6]
+    },
+    {
+      "id": "filtering-limitation",
+      "query": "Filtering 算法无法检测什么情况？",
+      "relevant_chunk_ids": ["Lecture 8b Distributed Constraints_chunk_0003"],
+      "verified_pages": [14]
+    },
+    {
+      "id": "k-consistency",
+      "query": "k-consistency 的定义是什么？",
+      "relevant_chunk_ids": ["Lecture 8b Distributed Constraints_chunk_0003"],
+      "verified_pages": [16]
+    },
+    {
+      "id": "abt-remote-calls",
+      "query": "异步回溯（ABT）中的 ok、nogood 和 add-neighbor 消息分别有什么作用？",
+      "relevant_chunk_ids": ["Lecture 8b Distributed Constraints_chunk_0014"],
+      "verified_pages": [37]
+    },
+    {
+      "id": "abt-completeness",
+      "query": "异步回溯算法（ABT）是否完备？",
+      "relevant_chunk_ids": ["Lecture 8b Distributed Constraints_chunk_0020"],
+      "verified_pages": [50]
+    },
+    {
+      "id": "awc-heuristic",
+      "query": "Asynchronous Weak-Commitment Search 如何选择新的变量值？",
+      "relevant_chunk_ids": ["Lecture 8b Distributed Constraints_chunk_0021"],
+      "verified_pages": [52]
+    },
+    {
+      "id": "awc-completeness",
+      "query": "Asynchronous Weak-Commitment Search 是否完备？",
+      "relevant_chunk_ids": ["Lecture 8b Distributed Constraints_chunk_0026"],
+      "verified_pages": [62]
+    },
+    {
+      "id": "distributed-breakout-limitation",
+      "query": "Distributed Breakout 的主要局限性是什么？",
+      "relevant_chunk_ids": ["Lecture 8b Distributed Constraints_chunk_0030"],
+      "verified_pages": [80]
+    },
+    {
+      "id": "adopt-message-types",
+      "query": "ADOPT 算法中的 threshold、value 和 cost 消息分别传递什么信息？",
+      "relevant_chunk_ids": ["Lecture 8b Distributed Constraints_chunk_0032"],
+      "verified_pages": [85]
+    },
+    {
+      "id": "adopt-optapo-comparison",
+      "query": "通信快或慢时，ADOPT 和 OptAPO 分别更适合哪种情况？",
+      "relevant_chunk_ids": ["Lecture 8b Distributed Constraints_chunk_0035"],
+      "verified_pages": [101]
+    }
+  ]
+}

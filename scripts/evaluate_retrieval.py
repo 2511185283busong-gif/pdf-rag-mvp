@@ -98,6 +98,7 @@ def evaluate_retrieval(
                 "id": case_id,
                 "query": query,
                 "relevant_chunk_ids": sorted(relevant_ids),
+                "verified_pages": raw_case.get("verified_pages", []),
                 "embedding": {
                     "results": embedding_results,
                     "hit": any(item["chunk_id"] in relevant_ids for item in embedding_results),

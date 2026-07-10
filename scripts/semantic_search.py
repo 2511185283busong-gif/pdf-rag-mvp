@@ -10,6 +10,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
+import numpy as np
+
 from search_chunks import compact_text
 
 
@@ -26,6 +28,20 @@ def configure_model_loading(local_files_only: bool) -> None:
     if local_files_only:
         os.environ.setdefault("HF_HUB_OFFLINE", "1")
         os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
+
+
+def cosine_similarities(passage_vectors: Any, query_vector: Any) -> np.ndarray:
+    passages = np.ascontiguousarray(passage_vectors, dtype=np.float32)
+    query = np.ascontiguousarray(query_vector, dtype=np.float32)
+    if not np.isfinite(passages).all() or not np.isfinite(query).all():
+        raise RuntimeError("Embedding model returned non-finite vector values.")
+
+    # Some macOS NumPy builds emit spurious floating-point warnings for this valid dot product.
+    with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
+        similarities = passages @ query
+    if not np.isfinite(similarities).all():
+        raise RuntimeError("Embedding similarity calculation returned non-finite values.")
+    return similarities
 
 
 def make_snippet(text: str, max_chars: int) -> str:
@@ -70,7 +86,7 @@ def semantic_search(
         normalize_embeddings=True,
         show_progress_bar=False,
     )
-    similarities = passage_vectors @ query_vector
+    similarities = cosine_similarities(passage_vectors, query_vector)
 
     results: list[dict[str, Any]] = []
     for chunk, similarity in zip(chunks, similarities):

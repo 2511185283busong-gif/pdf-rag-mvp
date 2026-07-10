@@ -12,6 +12,7 @@ from typing import Any
 from semantic_search import (
     DEFAULT_MODEL,
     MODEL_CACHE,
+    cosine_similarities,
     configure_model_loading,
     make_snippet,
 )
@@ -56,7 +57,7 @@ def retrieve_candidates(
         normalize_embeddings=True,
         show_progress_bar=False,
     )
-    similarities = passage_vectors @ query_vector
+    similarities = cosine_similarities(passage_vectors, query_vector)
 
     candidates: list[dict[str, Any]] = []
     for base_rank, (chunk, similarity) in enumerate(

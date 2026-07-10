@@ -1,6 +1,28 @@
 # PDF RAG MVP
 
-第一层先把本地 PDF 解析成带页码的 JSON。第二层把解析结果切成 chunks，但页码只作为引用 metadata，不作为强制切块边界。
+一个本地 PDF 问答原型：把 PDF 解析成带页码的 JSON，按语义切成 chunks，使用 dense embedding 召回、cross-encoder 重排，构造可引用上下文，并调用 DeepSeek 生成基于来源的回答。页码只作为引用 metadata，不作为强制切块边界。
+
+完整链路：
+
+```text
+PDF -> parse -> semantic chunk -> embedding recall -> rerank
+-> context builder -> DeepSeek answer -> sources/pages
+```
+
+## 一键问答
+
+已有 DeepSeek API key 后，可以直接从 PDF 得到带来源的答案：
+
+```bash
+.venv/bin/python scripts/ask_pdf.py \
+  /path/to/course.pdf \
+  "这个文档的主要结论是什么？" \
+  --candidate-k 20 \
+  --top-k 2
+```
+
+该命令会自动生成（或覆盖）`parsed/<pdf-name>.json` 和
+`chunks/<pdf-name>_chunks.json`，再完成检索、重排和回答。第一次在本机下载模型时，加 `--allow-download`。
 
 ## 本地解析
 
@@ -335,9 +357,35 @@ cp .env.example .env
   --json
 ```
 
+## 检索评估
+
+仅凭一次问答无法判断 rerank 是否真的改善了检索。`evaluate_retrieval.py`
+使用人工标注的问题和相关 chunk，分别计算 embedding-only 和 rerank 的
+`Hit@K` 与 `MRR@K`；这个过程不调用 DeepSeek，因此结果稳定且没有 API 成本。
+
+先复制示例并为你的 PDF 修改问题及正确的 `relevant_chunk_ids`：
+
+```bash
+cp evals/example_retrieval_cases.json evals/my_pdf_cases.json
+```
+
+然后运行：
+
+```bash
+.venv/bin/python scripts/evaluate_retrieval.py \
+  chunks/resume2_chunks.json \
+  evals/my_pdf_cases.json \
+  --candidate-k 3 \
+  --top-k 3 \
+  --output reports/resume2_retrieval_eval.json
+```
+
+`Hit@K` 表示正确 chunk 是否出现在前 K 条结果中；`MRR@K` 同时反映它是否排在更靠前的位置。建议准备至少 8-15 个不同类型的问题，再比较两组指标与每个问题的排序。
+
 ## 当前边界
 
 - 可以处理内置文字层的 PDF。
 - 扫描版 PDF 可能提取不到文字，会被标记为 `needs_ocr: true`。
-- 当前不处理向量数据库、不做大模型回答、不做 OCR。
+- 当前不使用向量数据库；每次运行会在内存中重新计算该 PDF 的 embedding。
+- 已支持 DeepSeek 生成答案和来源页码引用，但尚未实现 OCR。
 - 语义模型最多读取 512 tokens，过长 Chunk 会被截断。

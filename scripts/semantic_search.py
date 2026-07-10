@@ -21,6 +21,13 @@ os.environ.setdefault("HF_XET_CACHE", str(MODEL_CACHE / "xet"))
 os.environ.setdefault("HF_HUB_DISABLE_XET", "1")
 
 
+def configure_model_loading(local_files_only: bool) -> None:
+    """Avoid Hub metadata calls when a cached model is intentionally offline."""
+    if local_files_only:
+        os.environ.setdefault("HF_HUB_OFFLINE", "1")
+        os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
+
+
 def make_snippet(text: str, max_chars: int) -> str:
     compact = compact_text(text)
     if len(compact) <= max_chars:

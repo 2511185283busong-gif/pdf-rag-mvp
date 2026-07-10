@@ -1,0 +1,21 @@
+{
+  "schema_version": "0.1.0",
+  "notes": "Replace the chunk ids and questions with labels for your own PDF. Each case may list more than one relevant chunk.",
+  "cases": [
+    {
+      "id": "etl-project",
+      "query": "他做过什么数据处理项目？",
+      "relevant_chunk_ids": ["resume2_chunk_0000"]
+    },
+    {
+      "id": "rag-learning",
+      "query": "他如何学习 RAG？",
+      "relevant_chunk_ids": ["resume2_chunk_0001"]
+    },
+    {
+      "id": "english-background",
+      "query": "他的英语学习背景是什么？",
+      "relevant_chunk_ids": ["resume2_chunk_0002"]
+    }
+  ]
+}

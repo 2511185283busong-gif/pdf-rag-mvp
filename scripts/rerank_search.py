@@ -9,7 +9,12 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from semantic_search import DEFAULT_MODEL, MODEL_CACHE, make_snippet
+from semantic_search import (
+    DEFAULT_MODEL,
+    MODEL_CACHE,
+    configure_model_loading,
+    make_snippet,
+)
 
 
 DEFAULT_RERANK_MODEL = "cross-encoder/mmarco-mMiniLMv2-L12-H384-v1"
@@ -22,6 +27,7 @@ def retrieve_candidates(
     candidate_k: int,
     local_files_only: bool,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    configure_model_loading(local_files_only)
     from sentence_transformers import SentenceTransformer
 
     try:
@@ -85,6 +91,7 @@ def rerank_candidates(
     model_name: str,
     local_files_only: bool,
 ) -> list[dict[str, Any]]:
+    configure_model_loading(local_files_only)
     from sentence_transformers import CrossEncoder
 
     try:
@@ -125,6 +132,7 @@ def rerank_search(
     snippet_chars: int,
     local_files_only: bool = True,
 ) -> dict[str, Any]:
+    configure_model_loading(local_files_only)
     try:
         import sentence_transformers  # noqa: F401
     except ImportError as exc:

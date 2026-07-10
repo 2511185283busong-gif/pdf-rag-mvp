@@ -247,6 +247,26 @@ def has_content_unit(units: list[dict[str, Any]]) -> bool:
     return any(not unit.get("is_overlap") for unit in units)
 
 
+def tail_source_pages(units: list[dict[str, Any]]) -> list[int]:
+    """The overlap tail always ends in the last non-overlap semantic unit."""
+    for unit in reversed(units):
+        if not unit.get("is_overlap"):
+            return unit["source_pages"]
+    return []
+
+
+def overlap_units(text: str, source_pages: list[int]) -> list[dict[str, Any]]:
+    if not text:
+        return []
+    return [
+        {
+            "text": text,
+            "source_pages": source_pages,
+            "is_overlap": True,
+        }
+    ]
+
+
 def chunk_units(
     units: list[dict[str, Any]],
     document_id: str,
@@ -258,6 +278,7 @@ def chunk_units(
     current_units: list[dict[str, Any]] = []
     current_len = 0
     previous_tail = ""
+    previous_tail_pages: list[int] = []
 
     for unit in expand_oversized_units(units, max_chars):
         unit_len = len(unit["text"])
@@ -269,17 +290,8 @@ def chunk_units(
                 chunk = make_chunk(len(chunks), current_units, document_id, previous_tail)
                 chunks.append(chunk)
                 previous_tail = text_tail(chunk["text"], overlap_chars)
-                current_units = (
-                    [
-                        {
-                            "text": previous_tail,
-                            "source_pages": chunk["source_pages"],
-                            "is_overlap": True,
-                        }
-                    ]
-                    if previous_tail
-                    else []
-                )
+                previous_tail_pages = tail_source_pages(current_units)
+                current_units = overlap_units(previous_tail, previous_tail_pages)
                 current_len = len(previous_tail)
             else:
                 current_units = []
@@ -292,17 +304,8 @@ def chunk_units(
             chunk = make_chunk(len(chunks), current_units, document_id, previous_tail)
             chunks.append(chunk)
             previous_tail = text_tail(chunk["text"], overlap_chars)
-            current_units = (
-                [
-                    {
-                        "text": previous_tail,
-                        "source_pages": chunk["source_pages"],
-                        "is_overlap": True,
-                    }
-                ]
-                if previous_tail
-                else []
-            )
+            previous_tail_pages = tail_source_pages(current_units)
+            current_units = overlap_units(previous_tail, previous_tail_pages)
             current_len = len(previous_tail)
 
     if current_units and has_content_unit(current_units):

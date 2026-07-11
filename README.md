@@ -93,6 +93,27 @@ multilingual dense embedding；实际对比案例见 [evals/README.md](evals/REA
 该命令会自动生成（或覆盖）`parsed/<pdf-name>.json` 和
 `chunks/<pdf-name>_chunks.json`，再完成检索、重排和回答。第一次在本机下载模型时，加 `--allow-download`。
 
+## 浏览器 Demo
+
+除了命令行入口，还提供一个用于展示的单页 Streamlit 界面：上传文本层 PDF，
+输入问题，查看带页码来源的答案与 rerank 分数。上传文件只在临时目录中处理，
+不会写入项目的 `parsed/` 或 `chunks/` 目录。
+
+先安装演示依赖：
+
+```bash
+.venv/bin/python -m pip install -r requirements-demo.txt
+```
+
+确保 `.env` 中已有 `DEEPSEEK_API_KEY`，然后启动：
+
+```bash
+.venv/bin/python -m streamlit run app.py
+```
+
+浏览器打开终端显示的本地地址。首次缺少 embedding 或 rerank 模型时，可在侧栏
+勾选 `Allow first-time model download` 后运行一次。
+
 ## 本地解析
 
 安装依赖：

@@ -57,7 +57,9 @@ def semantic_search(
     top_k: int,
     model_name: str,
     snippet_chars: int,
+    local_files_only: bool = True,
 ) -> dict[str, Any]:
+    configure_model_loading(local_files_only)
     try:
         from sentence_transformers import SentenceTransformer
     except ImportError as exc:
@@ -71,7 +73,19 @@ def semantic_search(
     if not chunks:
         raise ValueError("No chunks found in the input JSON.")
 
-    model = SentenceTransformer(model_name, cache_folder=str(MODEL_CACHE))
+    try:
+        model = SentenceTransformer(
+            model_name,
+            cache_folder=str(MODEL_CACHE),
+            local_files_only=local_files_only,
+        )
+    except Exception as exc:
+        if local_files_only:
+            raise RuntimeError(
+                f"Embedding model is not available in local cache: {model_name}. "
+                "Run again with --allow-download once while online."
+            ) from exc
+        raise
     passage_texts = [f"passage: {chunk.get('text', '')}" for chunk in chunks]
     query_text = f"query: {query}"
 
@@ -168,6 +182,11 @@ def main() -> int:
         action="store_true",
         help="Print machine-readable JSON instead of text output.",
     )
+    parser.add_argument(
+        "--allow-download",
+        action="store_true",
+        help="Allow a model download if it is missing from local cache.",
+    )
     args = parser.parse_args()
     query = " ".join(args.query).strip()
 
@@ -185,6 +204,7 @@ def main() -> int:
             args.top_k,
             args.model,
             args.snippet_chars,
+            local_files_only=not args.allow_download,
         )
     except Exception as exc:
         print(f"Failed to run semantic search: {exc}", file=sys.stderr)

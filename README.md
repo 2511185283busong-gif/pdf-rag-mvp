@@ -51,6 +51,33 @@ dense embedding 召回与 rerank 后的排序。这里的结果是小型受控�
 这是一份 RAG MVP：重点是打通可解释的检索与回答闭环，并验证 rerank 对排序
 的影响，而不是宣称支持所有 PDF 版式。
 
+## Design Decisions
+
+### 为什么不把整页作为一个 embedding？
+
+一页可能同时包含定义、例子和不相关的段落。整页 embedding 会混合这些语义，
+导致召回粒度过粗，也会把过多文本放进 LLM context。项目先按段落和句子形成
+语义单元，再组合成目标长度的 chunk。
+
+### 为什么保留 page metadata？
+
+检索系统不仅要给出答案，还应让使用者回查原文。每个 chunk 都保存
+`source_pages` 和页码范围；context builder 将它们格式化为 `[S1, pages 1-2]`，
+最终回答能引用对应的 PDF 页面。
+
+### 为什么采用 embedding recall 加 rerank？
+
+dense embedding 适合在大量 chunk 中快速召回候选，但它独立编码问题和文本，
+细粒度相关性可能不稳定。cross-encoder 同时读取“问题 + 候选 chunk”，只对少量
+候选重新排序。候选数 `candidate-k` 是覆盖率与计算成本之间的取舍；rerank 无法
+找回第一阶段完全漏掉的证据。
+
+### 为什么不把 TF-IDF 作为主检索器？
+
+TF-IDF 是很好的教学和基线工具，但主要依赖词面重合，对同义改写、跨语言查询和
+词汇缺失较敏感。本项目保留 TF-IDF 实验脚本用于观察这些限制，主链路使用
+multilingual dense embedding；实际对比案例见 [evals/README.md](evals/README.md)。
+
 ## 一键问答
 
 已有 DeepSeek API key 后，可以直接从 PDF 得到带来源的答案：
@@ -253,6 +280,15 @@ python3 scripts/tfidf_wording_experiment.py chunks/resume2_chunks.json \
 - 使用归一化向量的点积计算余弦相似度。
 - 不使用向量数据库，不调用 LLM。
 - 第一次运行会把模型下载到项目的 `.models/`，之后会使用本地缓存。
+
+默认只读取本地模型缓存。若模型尚未下载，联网时加 `--allow-download`：
+
+```bash
+.venv/bin/python scripts/semantic_search.py \
+  chunks/resume2_chunks.json \
+  "How does RAG find useful passages?" \
+  --allow-download
+```
 
 可以用同一个问题分别运行 `vector_search_demo.py` 和
 `semantic_search.py`，比较 TF-IDF 词面匹配与稠密语义检索的 Top-K 排序。

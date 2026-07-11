@@ -24,6 +24,24 @@ PDF -> parse -> semantic chunk -> embedding recall -> rerank
 该命令会自动生成（或覆盖）`parsed/<pdf-name>.json` 和
 `chunks/<pdf-name>_chunks.json`，再完成检索、重排和回答。第一次在本机下载模型时，加 `--allow-download`。
 
+## 受限 Tool-Calling Agent
+
+`ask_agent.py` 在现有 RAG 链路上增加一个受限的 DeepSeek tool-calling
+步骤。模型只能从两个本地工具中选择一个：`retrieve_pdf` 用于获取文档证据，
+`document_status` 用于获取文档解析和 OCR 状态。Python 会校验工具名和参数，
+并且每次提问最多执行一次工具调用。
+
+```bash
+.venv/bin/python scripts/ask_agent.py \
+  chunks/resume2_chunks.json \
+  "他做过什么数据处理项目？" \
+  --candidate-k 20 \
+  --top-k 2
+```
+
+输出会包含 `Agent trace`、工具参数、检索来源和最终答案。它是一个可解释的
+tool-calling Agent 基础版本，不执行 shell 命令，也不使用多 Agent 或长期记忆。
+
 ## 本地解析
 
 安装依赖：

@@ -67,6 +67,8 @@ def call_deepseek(
     thinking: str,
     reasoning_effort: str,
     timeout_seconds: int,
+    tools: list[dict[str, Any]] | None = None,
+    tool_choice: str | dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     endpoint = f"{base_url.rstrip('/')}/chat/completions"
     payload: dict[str, Any] = {
@@ -81,6 +83,10 @@ def call_deepseek(
         payload["reasoning_effort"] = reasoning_effort
     else:
         payload["temperature"] = temperature
+    if tools is not None:
+        payload["tools"] = tools
+    if tool_choice is not None:
+        payload["tool_choice"] = tool_choice
 
     request = urllib.request.Request(
         endpoint,

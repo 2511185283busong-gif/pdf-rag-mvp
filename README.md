@@ -1,13 +1,55 @@
 # PDF RAG MVP
 
-一个本地 PDF 问答原型：把 PDF 解析成带页码的 JSON，按语义切成 chunks，使用 dense embedding 召回、cross-encoder 重排，构造可引用上下文，并调用 DeepSeek 生成基于来源的回答。页码只作为引用 metadata，不作为强制切块边界。
+一个本地、可追溯的 PDF 问答原型。它将带文本层的 PDF 解析为保留页码的
+JSON，经过语义切块、dense embedding 召回和 cross-encoder 重排后，把证据
+连同页码交给 DeepSeek 生成答案。回答会附上可回查的来源；页码是引用
+metadata，而不是强制切块边界。
 
-完整链路：
+## 项目链路
 
-```text
-PDF -> parse -> semantic chunk -> embedding recall -> rerank
--> context builder -> DeepSeek answer -> sources/pages
+```mermaid
+flowchart LR
+    A["Text-layer PDF"] --> B["Parse: page JSON + OCR flag"]
+    B --> C["Semantic chunking + page provenance"]
+    C --> D["Dense retrieval: multilingual-e5"]
+    D --> E["Cross-encoder reranking"]
+    E --> F["Context builder: evidence + source IDs"]
+    F --> G["DeepSeek answer"]
+    G --> H["Answer with source pages"]
+
+    C -. labelled questions .-> I["Retrieval evaluation: Hit@K / MRR@K"]
+    D -. baseline .-> I
+    E -. comparison .-> I
 ```
+
+## 已验证的检索改进
+
+在一份 101 页、36 个 chunk 的课程讲义上，使用 10 个人工核验的问题比较
+dense embedding 召回与 rerank 后的排序。这里的结果是小型受控评估，不代表
+对所有 PDF 的通用性能。
+
+| Candidate K | 方法 | Hit@3 | MRR@3 |
+| ---: | --- | ---: | ---: |
+| 10 | Dense embedding only | 0.70 | 0.60 |
+| 10 | Dense embedding + rerank | 0.90 | 0.80 |
+| 20 | Dense embedding + rerank | 1.00 | 0.7833 |
+
+完整的标注原则、命令和结果解释见 [evals/README.md](evals/README.md)。
+
+## 支持范围
+
+| 能力 | 当前状态 |
+| --- | --- |
+| 带文本层的 PDF 解析、页码追踪 | 支持 |
+| 中文/英文 dense embedding 检索 | 支持 |
+| Cross-encoder rerank 与来源引用 | 支持 |
+| DeepSeek 基于证据的答案生成 | 支持 |
+| 扫描件 OCR、图片理解 | 未实现 |
+| 复杂双栏、表格的结构化还原 | 未实现 |
+| 持久化向量数据库、多文档索引服务 | 未实现；当前每次在内存中计算单份 PDF 的 embedding |
+
+这是一份 RAG MVP：重点是打通可解释的检索与回答闭环，并验证 rerank 对排序
+的影响，而不是宣称支持所有 PDF 版式。
 
 ## 一键问答
 

@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from semantic_search import DEFAULT_MODEL, MODEL_CACHE
+from semantic_search import DEFAULT_MODEL, MODEL_CACHE, configure_model_loading
 from tfidf_wording_experiment import DEFAULT_QUERIES, FAKE_CHUNK
 
 
@@ -69,7 +69,15 @@ def main() -> int:
         default=DEFAULT_MODEL,
         help=f"Sentence Transformers model (default: {DEFAULT_MODEL}).",
     )
+    parser.add_argument(
+        "--allow-download",
+        action="store_true",
+        help="Allow a model download if it is missing from local cache.",
+    )
     args = parser.parse_args()
+
+    local_files_only = not args.allow_download
+    configure_model_loading(local_files_only)
 
     try:
         from sentence_transformers import SentenceTransformer
@@ -94,7 +102,21 @@ def main() -> int:
 
     queries = args.queries or DEFAULT_QUERIES
     all_chunks = [*original_chunks, FAKE_CHUNK]
-    model = SentenceTransformer(args.model, cache_folder=str(MODEL_CACHE))
+    try:
+        model = SentenceTransformer(
+            args.model,
+            cache_folder=str(MODEL_CACHE),
+            local_files_only=local_files_only,
+        )
+    except Exception as exc:
+        if local_files_only:
+            print(
+                f"Embedding model is not available in local cache: {args.model}. "
+                "Run again with --allow-download once while online.",
+                file=sys.stderr,
+            )
+            return 1
+        raise
     query_vectors = model.encode(
         [f"query: {query}" for query in queries],
         normalize_embeddings=True,

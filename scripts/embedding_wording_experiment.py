@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from semantic_search import DEFAULT_MODEL, MODEL_CACHE, configure_model_loading
+from semantic_search import DEFAULT_MODEL, MODEL_CACHE, resolve_model_reference
 from tfidf_wording_experiment import DEFAULT_QUERIES, FAKE_CHUNK
 
 
@@ -77,7 +77,6 @@ def main() -> int:
     args = parser.parse_args()
 
     local_files_only = not args.allow_download
-    configure_model_loading(local_files_only)
 
     try:
         from sentence_transformers import SentenceTransformer
@@ -103,8 +102,9 @@ def main() -> int:
     queries = args.queries or DEFAULT_QUERIES
     all_chunks = [*original_chunks, FAKE_CHUNK]
     try:
+        model_reference = resolve_model_reference(args.model, local_files_only)
         model = SentenceTransformer(
-            args.model,
+            model_reference,
             cache_folder=str(MODEL_CACHE),
             local_files_only=local_files_only,
         )

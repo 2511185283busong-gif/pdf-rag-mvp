@@ -22,18 +22,27 @@ def trim_text(text: str, max_chars: int) -> tuple[str, bool]:
     compact = compact_text(text)
     if len(compact) <= max_chars:
         return compact, False
-    return f"{compact[:max_chars].rstrip()}...", True
+    if max_chars <= 0:
+        return "", True
+    ellipsis = "..."
+    if max_chars <= len(ellipsis):
+        return ellipsis[:max_chars], True
+    prefix = compact[: max_chars - len(ellipsis)].rstrip()
+    return f"{prefix}{ellipsis}", True
 
 
-def format_context_source(source: dict[str, Any]) -> str:
-    header = (
+def format_context_header(source: dict[str, Any]) -> str:
+    return (
         f"[{source['source_id']}] "
         f"chunk={source['chunk_id']} "
         f"pages={source['page_range']} "
         f"rerank={source['rerank_score']:.6f} "
         f"base_rank={source['base_rank']}"
     )
-    return f"{header}\n{source['text']}"
+
+
+def format_context_source(source: dict[str, Any]) -> str:
+    return f"{format_context_header(source)}\n{source['text']}"
 
 
 def build_context(
@@ -64,22 +73,13 @@ def build_context(
 
     sources: list[dict[str, Any]] = []
     used_chars = 0
-    for index, result in enumerate(reranked["results"], start=1):
+    for result in reranked["results"]:
         chunk = chunks_by_id.get(result["chunk_id"])
         if not chunk:
             continue
 
-        remaining = max_context_chars - used_chars
-        if remaining <= 0:
-            break
-
-        allowed_chunk_chars = min(max_chunk_chars, remaining)
-        text, truncated = trim_text(chunk.get("text", ""), allowed_chunk_chars)
-        if not text:
-            continue
-
         source = {
-            "source_id": f"S{index}",
+            "source_id": f"S{len(sources) + 1}",
             "chunk_id": result["chunk_id"],
             "chunk_index": result["chunk_index"],
             "page_range": result["page_range"],
@@ -88,12 +88,28 @@ def build_context(
             "rerank_score": result["rerank_score"],
             "base_rank": result["base_rank"],
             "base_similarity": result["base_similarity"],
-            "text": text,
-            "included_chars": len(text),
-            "truncated": truncated,
         }
+
+        separator_chars = 2 if sources else 0
+        fixed_chars = separator_chars + len(format_context_header(source)) + 1
+        available_text_chars = max_context_chars - used_chars - fixed_chars
+        if available_text_chars <= 0:
+            break
+
+        allowed_chunk_chars = min(max_chunk_chars, available_text_chars)
+        text, truncated = trim_text(chunk.get("text", ""), allowed_chunk_chars)
+        if not text:
+            continue
+
+        source.update(
+            {
+                "text": text,
+                "included_chars": len(text),
+                "truncated": truncated,
+            }
+        )
         sources.append(source)
-        used_chars += len(format_context_source(source)) + 2
+        used_chars += fixed_chars + len(text)
 
     context = "\n\n".join(format_context_source(source) for source in sources)
     prompt = "\n\n".join(

@@ -168,6 +168,16 @@ def split_by_size(text: str, max_chars: int) -> list[str]:
     current = ""
 
     for word in words:
+        if len(word) > max_chars:
+            if current:
+                parts.append(current)
+                current = ""
+            while len(word) > max_chars:
+                parts.append(word[:max_chars])
+                word = word[max_chars:]
+            current = word
+            continue
+
         candidate = word if not current else f"{current} {word}"
         if len(candidate) <= max_chars:
             current = candidate
@@ -177,8 +187,7 @@ def split_by_size(text: str, max_chars: int) -> list[str]:
             parts.append(current)
             current = word
         else:
-            parts.append(word[:max_chars])
-            current = word[max_chars:]
+            current = word
 
     if current:
         parts.append(current)

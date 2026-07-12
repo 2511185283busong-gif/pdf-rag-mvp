@@ -5,17 +5,14 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import sys
 from pathlib import Path
 from typing import Any
 
 from answer_question import (
-    DEFAULT_DEEPSEEK_BASE_URL,
-    DEFAULT_DEEPSEEK_MODEL,
     answer_question,
-    load_env_file,
     print_answer,
+    resolve_deepseek_config,
 )
 from chunk_json import (
     DEFAULT_MAX_CHARS,
@@ -125,12 +122,8 @@ def main() -> int:
     parser.add_argument("--rerank-model", default=DEFAULT_RERANK_MODEL)
     parser.add_argument("--allow-download", action="store_true")
     parser.add_argument("--env-file", type=Path, default=Path(".env"))
-    parser.add_argument(
-        "--base-url", default=os.environ.get("DEEPSEEK_BASE_URL", DEFAULT_DEEPSEEK_BASE_URL)
-    )
-    parser.add_argument(
-        "--llm-model", default=os.environ.get("DEEPSEEK_MODEL", DEFAULT_DEEPSEEK_MODEL)
-    )
+    parser.add_argument("--base-url", default=None)
+    parser.add_argument("--llm-model", default=None)
     parser.add_argument("--max-tokens", type=int, default=600)
     parser.add_argument("--temperature", type=float, default=0.2)
     parser.add_argument("--thinking", choices=["disabled", "enabled"], default="disabled")
@@ -140,8 +133,9 @@ def main() -> int:
     args = parser.parse_args()
 
     query = " ".join(args.query).strip()
-    load_env_file(args.env_file)
-    api_key = os.environ.get("DEEPSEEK_API_KEY", "").strip()
+    api_key, base_url, llm_model = resolve_deepseek_config(
+        args.env_file, args.base_url, args.llm_model
+    )
 
     if not query:
         print("query cannot be empty.", file=sys.stderr)
@@ -180,8 +174,8 @@ def main() -> int:
             max_chunk_chars=args.max_chunk_chars,
             local_files_only=not args.allow_download,
             api_key=api_key,
-            base_url=args.base_url,
-            llm_model=args.llm_model,
+            base_url=base_url,
+            llm_model=llm_model,
             max_tokens=args.max_tokens,
             temperature=args.temperature,
             thinking=args.thinking,

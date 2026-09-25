@@ -1,11 +1,16 @@
 # PDF RAG MVP
 
-一个本地、可追溯的 PDF 问答原型。它将带文本层的 PDF 解析为保留页码的
-JSON，经过语义切块、dense embedding 召回和 cross-encoder 重排后，把证据
-连同页码交给 DeepSeek 生成答案。回答会附上可回查的来源；页码是引用
-metadata，而不是强制切块边界。
+A local, traceable question-answering prototype for text-layer PDFs. It parses a
+PDF into page-aware JSON, creates provenance-preserving chunks, retrieves
+evidence with multilingual dense embeddings, reranks candidates with a
+cross-encoder, and asks DeepSeek to generate an answer with source-page
+citations.
 
-## 项目链路
+This repository is intentionally an MVP. Its purpose is to make the retrieval
+and answer-generation path inspectable, not to claim support for every PDF
+layout or production-scale indexing.
+
+## Pipeline
 
 ```mermaid
 flowchart LR
@@ -22,127 +27,139 @@ flowchart LR
     E -. comparison .-> I
 ```
 
-## 已验证的检索改进
+## Highlights
 
-在一份 101 页、36 个 chunk 的课程讲义上，使用 10 个人工核验的问题比较
-dense embedding 召回与 rerank 后的排序。这里的结果是小型受控评估，不代表
-对所有 PDF 的通用性能。
+- Page-level PDF parsing with page metadata carried through to final citations.
+- Rule-based semantic chunking with overlap and source-page provenance.
+- Multilingual dense retrieval using `intfloat/multilingual-e5-small`.
+- Cross-encoder reranking using `cross-encoder/mmarco-mMiniLMv2-L12-H384-v1`.
+- Evidence-bounded DeepSeek answers with source IDs and page ranges.
+- A Streamlit demo for PDF upload, question answering, and source inspection.
+- Manually labelled retrieval evaluation with Hit@K and MRR@K.
 
-| Candidate K | 方法 | Hit@3 | MRR@3 |
+## Verified Retrieval Improvement
+
+On a 101-page lecture split into 36 chunks, 10 manually verified questions
+were used to compare dense-retrieval ordering with reranked ordering. These are
+small controlled results, not a general performance claim for all PDFs.
+
+| Candidate K | Method | Hit@3 | MRR@3 |
 | ---: | --- | ---: | ---: |
 | 10 | Dense embedding only | 0.70 | 0.60 |
-| 10 | Dense embedding + rerank | 0.90 | 0.80 |
-| 20 | Dense embedding + rerank | 1.00 | 0.7833 |
+| 10 | Dense embedding + reranking | 0.90 | 0.80 |
+| 20 | Dense embedding + reranking | 1.00 | 0.7833 |
 
-完整的标注原则、命令和结果解释见 [evals/README.md](evals/README.md)。
+See [evals/README.md](evals/README.md) for labelling rules, commands, result
+interpretation, and worked examples.
 
-## 支持范围
+## Supported Scope
 
-| 能力 | 当前状态 |
+| Capability | Status |
 | --- | --- |
-| 带文本层的 PDF 解析、页码追踪 | 支持 |
-| 中文/英文 dense embedding 检索 | 支持 |
-| Cross-encoder rerank 与来源引用 | 支持 |
-| DeepSeek 基于证据的答案生成 | 支持 |
-| 扫描件 OCR、图片理解 | 未实现 |
-| 复杂双栏、表格的结构化还原 | 未实现 |
-| 持久化向量数据库、多文档索引服务 | 未实现；当前每次在内存中计算单份 PDF 的 embedding |
+| Text-layer PDF parsing and page tracking | Supported |
+| English and Chinese dense retrieval | Supported |
+| Cross-encoder reranking and source citations | Supported |
+| Evidence-grounded DeepSeek answer generation | Supported |
+| OCR for scanned PDFs and image understanding | Not implemented |
+| Structured recovery for complex tables or double-column layouts | Not implemented |
+| Persistent vector database or multi-document indexing service | Not implemented; embeddings are computed in memory per document |
 
-这是一份 RAG MVP：重点是打通可解释的检索与回答闭环，并验证 rerank 对排序
-的影响，而不是宣称支持所有 PDF 版式。
+## Quick Start: Ask a PDF
 
-## Design Decisions
+1. Install the dependencies:
 
-### 为什么不把整页作为一个 embedding？
+```bash
+python3 -m pip install -r requirements.txt
+.venv/bin/python -m pip install -r requirements-semantic.txt
+```
 
-一页可能同时包含定义、例子和不相关的段落。整页 embedding 会混合这些语义，
-导致召回粒度过粗，也会把过多文本放进 LLM context。项目先按段落和句子形成
-语义单元，再组合成目标长度的 chunk。
+2. Create a local API-key file:
 
-### 为什么保留 page metadata？
+```bash
+cp .env.example .env
+```
 
-检索系统不仅要给出答案，还应让使用者回查原文。每个 chunk 都保存
-`source_pages` 和页码范围；context builder 将它们格式化为 `[S1, pages 1-2]`，
-最终回答能引用对应的 PDF 页面。
+Set `DEEPSEEK_API_KEY` in `.env`. The file is ignored by Git and is never
+committed.
 
-### 为什么采用 embedding recall 加 rerank？
-
-dense embedding 适合在大量 chunk 中快速召回候选，但它独立编码问题和文本，
-细粒度相关性可能不稳定。cross-encoder 同时读取“问题 + 候选 chunk”，只对少量
-候选重新排序。候选数 `candidate-k` 是覆盖率与计算成本之间的取舍；rerank 无法
-找回第一阶段完全漏掉的证据。
-
-### 为什么不把 TF-IDF 作为主检索器？
-
-TF-IDF 是很好的教学和基线工具，但主要依赖词面重合，对同义改写、跨语言查询和
-词汇缺失较敏感。本项目保留 TF-IDF 实验脚本用于观察这些限制，主链路使用
-multilingual dense embedding；实际对比案例见 [evals/README.md](evals/README.md)。
-
-## 一键问答
-
-已有 DeepSeek API key 后，可以直接从 PDF 得到带来源的答案：
+3. Ask a question in one command:
 
 ```bash
 .venv/bin/python scripts/ask_pdf.py \
   /path/to/course.pdf \
-  "这个文档的主要结论是什么？" \
+  "What is the main conclusion of this document?" \
   --candidate-k 20 \
   --top-k 2
 ```
 
-该命令会自动生成（或覆盖）`parsed/<pdf-name>.json` 和
-`chunks/<pdf-name>_chunks.json`，再完成检索、重排和回答。第一次在本机下载模型时，加 `--allow-download`。
+The command writes `parsed/<pdf-name>.json` and
+`chunks/<pdf-name>_chunks.json`, then retrieves, reranks, builds context, and
+generates a cited answer. On a first run without local models, add
+`--allow-download`.
 
-## 浏览器 Demo
+## Streamlit Demo
 
-除了命令行入口，还提供一个用于展示的单页 Streamlit 界面：上传文本层 PDF，
-输入问题，查看带页码来源的答案与 rerank 分数。上传文件只在临时目录中处理，
-不会写入项目的 `parsed/` 或 `chunks/` 目录。
-
-先安装演示依赖：
+The repository also includes a single-page demo for uploading a text-layer PDF,
+asking a question, and reviewing source pages and rerank scores. Uploaded files
+are processed in a temporary directory and do not write to `parsed/` or
+`chunks/`.
 
 ```bash
 .venv/bin/python -m pip install -r requirements-demo.txt
-```
-
-确保 `.env` 中已有 `DEEPSEEK_API_KEY`，然后启动：
-
-```bash
 .venv/bin/python -m streamlit run app.py
 ```
 
-浏览器打开终端显示的本地地址。首次缺少 embedding 或 rerank 模型时，可在侧栏
-勾选 `Allow first-time model download` 后运行一次。
+Open the local URL printed by Streamlit. If the embedding or reranking models
+are not available locally yet, enable **Allow first-time model download** in the
+sidebar for the initial run.
 
-## 本地解析
+## Design Decisions
 
-安装依赖：
+### Why not embed whole pages?
 
-```bash
-python3 -m pip install -r requirements.txt
-```
+A page can contain definitions, examples, and unrelated material. Embedding the
+whole page mixes these meanings, reduces retrieval precision, and places too
+much text in the LLM context. This project first forms paragraph- and
+sentence-level semantic units, then packs them into target-sized chunks.
 
-解析 PDF：
+### Why preserve page metadata?
+
+A retrieval system should let a user check the source, not only provide an
+answer. Every chunk stores `source_pages` and a page range. The context builder
+formats these as source labels such as `[S1, pages 1-2]`, which the final answer
+can cite.
+
+### Why use dense recall followed by reranking?
+
+Dense embeddings efficiently recall candidates from many chunks, but encode the
+query and passage independently. A cross-encoder reads a query and candidate
+together, giving a more precise relevance score to a small candidate set.
+`candidate-k` is therefore a recall-versus-compute tradeoff: reranking cannot
+recover evidence missed by the first stage.
+
+### Why not use TF-IDF as the main retriever?
+
+TF-IDF is a useful baseline and teaching tool, but it relies on lexical overlap
+and is sensitive to paraphrases, cross-language queries, and vocabulary gaps.
+The main path uses multilingual dense embeddings. TF-IDF experiments remain in
+the repository to make those limitations observable.
+
+## Running Individual Stages
+
+### Parse a PDF
 
 ```bash
 python3 scripts/parse_pdf.py /path/to/course.pdf
 ```
 
-默认输出：
-
-```text
-parsed/course.json
-```
-
-也可以指定输出位置：
+The default output is `parsed/course.json`. Use `-o` to choose another output
+path:
 
 ```bash
 python3 scripts/parse_pdf.py /path/to/course.pdf -o parsed/course.json
 ```
 
-## JSON 结构
-
-核心字段：
+The output records document metadata and page-level text:
 
 ```json
 {
@@ -153,14 +170,7 @@ python3 scripts/parse_pdf.py /path/to/course.pdf -o parsed/course.json
     "size_bytes": 123456,
     "sha256": "..."
   },
-  "parser": {
-    "name": "pdfplumber",
-    "version": "0.11.9"
-  },
-  "document": {
-    "page_count": 10,
-    "metadata": {}
-  },
+  "document": { "page_count": 10 },
   "pages": [
     {
       "page_index": 0,
@@ -175,35 +185,20 @@ python3 scripts/parse_pdf.py /path/to/course.pdf -o parsed/course.json
 }
 ```
 
-其中 `page_number` 是之后回答问题时引用页码的基础，例如“见第 3 页”。
-
-## 本地切块
-
-解析完成后，把 `parsed/*.json` 切成适合检索的小段：
+### Create chunks
 
 ```bash
 python3 scripts/chunk_json.py parsed/course.json
 ```
 
-默认输出：
-
-```text
-chunks/course_chunks.json
-```
-
-切块原则：
-
-- 先按段落/句子形成语义单元。
-- 再按目标长度打包成 chunk。
-- 页码只保存在 `source_pages`、`start_page`、`end_page`、`page_range` 里。
-- 不会把“每一页”粗暴当成一个 chunk。
-
-chunk 输出示例：
+The default output is `chunks/course_chunks.json`. Chunks are built from
+paragraph and sentence units, then packed to a target length. Page numbers are
+provenance metadata, not hard chunk boundaries.
 
 ```json
 {
   "chunk_id": "course_chunk_0000",
-  "text": "一个相对完整的语义片段...",
+  "text": "A self-contained semantic passage...",
   "source_pages": [1, 2],
   "page_range": "1-2",
   "start_page": 1,
@@ -212,30 +207,17 @@ chunk 输出示例：
 }
 ```
 
-## 关键词检索
-
-切块完成后，可以先用关键词检索找到相关 chunk 和引用页码：
+### Keyword retrieval baseline
 
 ```bash
 python3 scripts/search_chunks.py chunks/course_chunks.json "RAG data pipeline"
 ```
 
-返回内容包括：
+This is a lightweight BM25-style lexical baseline. It returns a chunk ID,
+score, source pages, and a snippet. It is not vector retrieval and does not use
+an LLM.
 
-- 命中的 `chunk_id`
-- 相关分数 `score`
-- 来源页码 `pages`
-- 片段预览 `snippet`
-
-这一步还不是向量检索，只是轻量 BM25 风格的关键词检索，用来先打通：
-
-```text
-用户问题 -> 找到相关 chunk -> 返回引用页码
-```
-
-## 本地向量检索实验
-
-为了理解 embedding 和余弦相似度，可以先做一个完全本地的教学实验：
+### TF-IDF vector experiment
 
 ```bash
 python3 scripts/vector_search_demo.py \
@@ -243,50 +225,29 @@ python3 scripts/vector_search_demo.py \
   "Has he built an ETL data processing project?"
 ```
 
-这个脚本会：
+The script converts up to 10 chunks and the query into TF-IDF vectors, computes
+cosine similarity locally, and returns the Top-K results with source pages. It
+does not use a vector database, Chroma, FAISS, an LLM, or extra Python
+dependencies.
 
-1. 把最多 10 个 chunk 转成 TF-IDF 向量。
-2. 把 query 转成同一个向量空间里的向量。
-3. 本地计算 query 和每个 chunk 的 cosine similarity。
-4. 按相似度返回 Top-K，并保留来源页码。
-
-这一步：
-
-- 不使用向量数据库。
-- 不使用 Chroma 或 FAISS。
-- 不调用 LLM。
-- 不需要新增 Python 依赖。
-
-注意：这里的 TF-IDF 是为了把“文本 -> 向量 -> 余弦排序”过程展示清楚。它是教学版稀疏 embedding，还不能像神经网络 embedding 那样理解真正的语义相似。
-
-### 措辞和假 Chunk 实验
-
-用多种表达方式测试同一个意思，再加入一个重复关键词的假 Chunk：
+To test paraphrases and a synthetic keyword distractor:
 
 ```bash
 python3 scripts/tfidf_wording_experiment.py chunks/resume2_chunks.json
 ```
 
-也可以自己提供多个问题：
+The experiment does not modify the original chunk JSON. It illustrates how
+keyword frequency, paraphrasing, and cross-language queries affect TF-IDF.
 
-```bash
-python3 scripts/tfidf_wording_experiment.py chunks/resume2_chunks.json \
-  --query "How does retrieval work in RAG?" \
-  --query "How does RAG find useful passages?"
-```
+### Dense semantic retrieval
 
-这个实验不会修改原始 Chunk JSON。它用来观察 TF-IDF 对关键词、
-词频、同义改写和跨语言问题的反应。
-
-## 真实语义 Embedding
-
-安装语义检索的额外依赖：
+Install the semantic-retrieval dependencies:
 
 ```bash
 .venv/bin/python -m pip install -r requirements-semantic.txt
 ```
 
-运行真实的神经网 Embedding 检索：
+Then run dense retrieval:
 
 ```bash
 .venv/bin/python scripts/semantic_search.py \
@@ -294,39 +255,18 @@ python3 scripts/tfidf_wording_experiment.py chunks/resume2_chunks.json \
   "Has he built a system that moves and transforms data?"
 ```
 
-默认使用 `intfloat/multilingual-e5-small`：
+The default model is `intfloat/multilingual-e5-small`. It supports English and
+Chinese, creates normalized 384-dimensional vectors, and uses their dot product
+as cosine similarity. Models are cached under `.models/`; if a model is not yet
+available, use `--allow-download` while connected to the internet.
 
-- 支持中文和英文。
-- Query 和 Chunk 都会转换为 384 维稠密向量。
-- 使用归一化向量的点积计算余弦相似度。
-- 不使用向量数据库，不调用 LLM。
-- 第一次运行会把模型下载到项目的 `.models/`，之后会使用本地缓存。
-
-默认只读取本地模型缓存。若模型尚未下载，联网时加 `--allow-download`：
-
-```bash
-.venv/bin/python scripts/semantic_search.py \
-  chunks/resume2_chunks.json \
-  "How does RAG find useful passages?" \
-  --allow-download
-```
-
-可以用同一个问题分别运行 `vector_search_demo.py` 和
-`semantic_search.py`，比较 TF-IDF 词面匹配与稠密语义检索的 Top-K 排序。
-
-使用和 TF-IDF 实验完全相同的五种问法和假 Chunk：
+For a direct comparison with the TF-IDF experiment:
 
 ```bash
 .venv/bin/python scripts/embedding_wording_experiment.py chunks/resume2_chunks.json
 ```
 
-对比时主要观察：同义改写是否仍能找到同一个 Chunk，中文问题能否检索英文
-Chunk，以及重复关键词的假 Chunk 是否仍会排在第一。
-
-## Rerank 二阶段重排
-
-语义检索先用 embedding 快速召回一批候选 chunk，再用 cross-encoder
-同时读取“问题 + 候选 chunk”来重新打分：
+### Two-stage reranking
 
 ```bash
 .venv/bin/python scripts/rerank_search.py \
@@ -336,17 +276,12 @@ Chunk，以及重复关键词的假 Chunk 是否仍会排在第一。
   --top-k 3
 ```
 
-默认流程：
+The first stage uses `intfloat/multilingual-e5-small` for dense recall. The
+second stage uses `cross-encoder/mmarco-mMiniLMv2-L12-H384-v1` to rerank those
+candidates. Output includes the rerank score, original embedding rank, and
+base similarity. It does not use a vector database or an LLM.
 
-- 第一阶段：`intfloat/multilingual-e5-small` 做 dense embedding 召回。
-- 第二阶段：`cross-encoder/mmarco-mMiniLMv2-L12-H384-v1` 做 rerank。
-- 输出会同时显示 `rerank_score`、原始 embedding `base_rank` 和
-  `base_similarity`，方便观察重排前后的变化。
-- 不使用向量数据库，不调用 LLM。
-- 默认只使用项目 `.models/` 里的本地缓存，避免离线时等待网络重试。
-- 如果本地还没有模型，联网时加 `--allow-download` 下载一次。
-
-可以替换 rerank 模型：
+To use a different reranker:
 
 ```bash
 .venv/bin/python scripts/rerank_search.py \
@@ -356,119 +291,67 @@ Chunk，以及重复关键词的假 Chunk 是否仍会排在第一。
   --allow-download
 ```
 
-## Context Builder
-
-Rerank 之后，可以把 Top-K chunk 整理成可直接喂给 LLM 的上下文：
+### Build LLM context
 
 ```bash
 .venv/bin/python scripts/context_builder.py \
   chunks/resume2_chunks.json \
-  "他做过什么数据处理项目？" \
+  "What data-processing projects has the candidate completed?" \
   --candidate-k 3 \
   --top-k 3
 ```
 
-输出会包含：
+The context contains reranked chunk text, source labels such as `[S1]`, source
+pages, rerank scores, and original ranks. Add `--prompt` to print the complete
+LLM prompt or `--json` for machine-readable output. Use `--allow-download` on
+the initial run when models are not cached locally.
 
-- `Context`：按 rerank 顺序排列的 chunk 正文。
-- `[S1]`、`[S2]` 这样的 source id，方便回答时引用。
-- `pages`：原 PDF 页码。
-- `rerank`、`base_rank`：方便检查为什么这些 chunk 被选进上下文。
-
-也可以直接生成一个完整 prompt：
-
-```bash
-.venv/bin/python scripts/context_builder.py \
-  chunks/resume2_chunks.json \
-  "他做过什么数据处理项目？" \
-  --candidate-k 3 \
-  --top-k 3 \
-  --prompt
-```
-
-如果要给后续程序读取，用 JSON：
-
-```bash
-.venv/bin/python scripts/context_builder.py \
-  chunks/resume2_chunks.json \
-  "他做过什么数据处理项目？" \
-  --candidate-k 3 \
-  --top-k 3 \
-  --json
-```
-
-如果本地还没有 embedding 或 rerank 模型，第一次运行时加：
-
-```bash
---allow-download
-```
-
-## DeepSeek 生成答案
-
-Context Builder 之后，可以接 DeepSeek API 生成最终回答。
-
-先创建本地 `.env`：
-
-```bash
-cp .env.example .env
-```
-
-然后把 `.env` 里的 `DEEPSEEK_API_KEY` 改成你的 DeepSeek API key。
-`.env` 已经在 `.gitignore` 里，不会被提交。
-
-运行问答：
+### Generate a DeepSeek answer
 
 ```bash
 .venv/bin/python scripts/answer_question.py \
   chunks/resume2_chunks.json \
-  "他做过什么数据处理项目？" \
+  "What data-processing projects has the candidate completed?" \
   --candidate-k 3 \
   --top-k 1
 ```
 
-默认使用：
+Defaults:
 
-- API base URL：`https://api.deepseek.com`
-- LLM：`deepseek-v4-flash`
-- thinking：`disabled`
-- 输入上下文：来自 `context_builder.py` 的 `[S1]`、`pages` 和 chunk 正文
+- API base URL: `https://api.deepseek.com`
+- Model: `deepseek-v4-flash`
+- Thinking: `disabled`
+- Evidence: source labels, source pages, and chunk text from `context_builder.py`
 
-如果想打开 thinking：
+Enable reasoning with:
 
 ```bash
 .venv/bin/python scripts/answer_question.py \
   chunks/resume2_chunks.json \
-  "他做过什么数据处理项目？" \
+  "What data-processing projects has the candidate completed?" \
   --candidate-k 3 \
   --top-k 1 \
   --thinking enabled \
   --reasoning-effort high
 ```
 
-如果想输出 JSON：
+Use `--json` for machine-readable output.
 
-```bash
-.venv/bin/python scripts/answer_question.py \
-  chunks/resume2_chunks.json \
-  "他做过什么数据处理项目？" \
-  --candidate-k 3 \
-  --top-k 1 \
-  --json
-```
+## Retrieval Evaluation
 
-## 检索评估
+A single answer cannot establish whether reranking actually improves retrieval.
+`evaluate_retrieval.py` uses manually labelled questions and relevant chunk IDs
+to calculate embedding-only and reranked `Hit@K` and `MRR@K`. It does not call
+DeepSeek, so the result is reproducible and has no API cost.
 
-仅凭一次问答无法判断 rerank 是否真的改善了检索。`evaluate_retrieval.py`
-使用人工标注的问题和相关 chunk，分别计算 embedding-only 和 rerank 的
-`Hit@K` 与 `MRR@K`；这个过程不调用 DeepSeek，因此结果稳定且没有 API 成本。
-
-先复制示例并为你的 PDF 修改问题及正确的 `relevant_chunk_ids`：
+Copy the example and replace its questions and `relevant_chunk_ids` for your
+own PDF:
 
 ```bash
 cp evals/example_retrieval_cases.json evals/my_pdf_cases.json
 ```
 
-然后运行：
+Then run:
 
 ```bash
 .venv/bin/python scripts/evaluate_retrieval.py \
@@ -479,12 +362,17 @@ cp evals/example_retrieval_cases.json evals/my_pdf_cases.json
   --output reports/resume2_retrieval_eval.json
 ```
 
-`Hit@K` 表示正确 chunk 是否出现在前 K 条结果中；`MRR@K` 同时反映它是否排在更靠前的位置。建议准备至少 8-15 个不同类型的问题，再比较两组指标与每个问题的排序。
+`Hit@K` checks whether a relevant chunk appears in the first K results.
+`MRR@K` also rewards placing it earlier. Use at least 8-15 questions covering
+different document topics before comparing methods.
 
-## 当前边界
+## Limitations
 
-- 可以处理内置文字层的 PDF。
-- 扫描版 PDF 可能提取不到文字，会被标记为 `needs_ocr: true`。
-- 当前不使用向量数据库；每次运行会在内存中重新计算该 PDF 的 embedding。
-- 已支持 DeepSeek 生成答案和来源页码引用，但尚未实现 OCR。
-- 语义模型最多读取 512 tokens，过长 Chunk 会被截断。
+- Designed for PDFs with an embedded text layer.
+- Scanned PDFs may produce little text and are marked `needs_ocr: true`; OCR is
+  not implemented.
+- Complex double-column layouts and tables are not structurally reconstructed.
+- No persistent vector database is used; embeddings are recomputed in memory
+  for each PDF.
+- The semantic models read at most 512 tokens, so overly long chunks are
+  truncated by the model.

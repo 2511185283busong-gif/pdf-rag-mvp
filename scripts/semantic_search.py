@@ -23,11 +23,25 @@ os.environ.setdefault("HF_XET_CACHE", str(MODEL_CACHE / "xet"))
 os.environ.setdefault("HF_HUB_DISABLE_XET", "1")
 
 
-def configure_model_loading(local_files_only: bool) -> None:
-    """Avoid Hub metadata calls when a cached model is intentionally offline."""
-    if local_files_only:
-        os.environ.setdefault("HF_HUB_OFFLINE", "1")
-        os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
+def resolve_model_reference(model_name: str, local_files_only: bool) -> str:
+    direct_path = Path(model_name).expanduser()
+    if direct_path.exists():
+        return str(direct_path.resolve())
+    if not local_files_only:
+        return model_name
+
+    cache_repo = MODEL_CACHE / f"models--{model_name.replace('/', '--')}"
+    main_ref = cache_repo / "refs" / "main"
+    if main_ref.exists():
+        revision = main_ref.read_text(encoding="utf-8").strip()
+        snapshot = cache_repo / "snapshots" / revision
+        if revision and snapshot.is_dir():
+            return str(snapshot.resolve())
+
+    raise RuntimeError(
+        f"Model is not available in local cache: {model_name}. "
+        "Run again with --allow-download once while online."
+    )
 
 
 def cosine_similarities(passage_vectors: Any, query_vector: Any) -> np.ndarray:
@@ -59,7 +73,6 @@ def semantic_search(
     snippet_chars: int,
     local_files_only: bool = True,
 ) -> dict[str, Any]:
-    configure_model_loading(local_files_only)
     try:
         from sentence_transformers import SentenceTransformer
     except ImportError as exc:
@@ -74,8 +87,9 @@ def semantic_search(
         raise ValueError("No chunks found in the input JSON.")
 
     try:
+        model_reference = resolve_model_reference(model_name, local_files_only)
         model = SentenceTransformer(
-            model_name,
+            model_reference,
             cache_folder=str(MODEL_CACHE),
             local_files_only=local_files_only,
         )

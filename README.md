@@ -14,17 +14,17 @@ layout or production-scale indexing.
 
 ```mermaid
 flowchart LR
-    A["Text-layer PDF"] --> B["Parse: page JSON + OCR flag"]
-    B --> C["Semantic chunking + page provenance"]
-    C --> D["Dense retrieval: multilingual-e5"]
-    D --> E["Cross-encoder reranking"]
-    E --> F["Context builder: evidence + source IDs"]
-    F --> G["DeepSeek answer"]
-    G --> H["Answer with source pages"]
+    PDF[Text Layer PDF] --> PARSE[Page Parser]
+    PARSE --> CHUNK[Semantic Chunker]
+    CHUNK --> RETRIEVE[Dense Retriever]
+    RETRIEVE --> RERANK[Cross Encoder Reranker]
+    RERANK --> CONTEXT[Context Builder]
+    CONTEXT --> LLM[DeepSeek Answer]
+    LLM --> ANSWER[Cited Answer]
 
-    C -. labelled questions .-> I["Retrieval evaluation: Hit@K / MRR@K"]
-    D -. baseline .-> I
-    E -. comparison .-> I
+    CHUNK -.-> EVAL[Retrieval Evaluation]
+    RETRIEVE -.-> EVAL
+    RERANK -.-> EVAL
 ```
 
 ## Highlights

@@ -48,7 +48,7 @@ def render_sources(sources: list[dict]) -> None:
     st.subheader("Sources")
     for source in sources:
         st.markdown(
-            f"**[{source['source_id']}] {source['chunk_id']}**  \\n+Pages {source['page_range']} · Rerank {source['rerank_score']:.3f}"
+            f"**[{source['source_id']}] {source['chunk_id']}**  \nPages {source['page_range']} · Rerank {source['rerank_score']:.3f}"
         )
 
 

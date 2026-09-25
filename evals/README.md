@@ -94,7 +94,7 @@ For the manually labelled lecture question below, the correct evidence is
 `Lecture 8b Distributed Constraints_chunk_0014` (pages 36-39):
 
 ```text
-异步回溯（ABT）中的 ok、nogood 和 add-neighbor 消息分别有什么作用？
+What are the roles of ok, nogood, and add-neighbor messages in asynchronous backtracking (ABT)?
 ```
 
 With `candidate-k=10`, embedding-only Top 3 returned chunks `0021`, `0015`,

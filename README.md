@@ -113,6 +113,16 @@ Open the local URL printed by Streamlit. If the embedding or reranking models
 are not available locally yet, enable **Allow first-time model download** in the
 sidebar for the initial run.
 
+### Demo Screenshots
+
+The screenshots below use a public research paper and show the complete local
+workflow: PDF upload, question entry, cited answer, source pages, and rerank
+scores.
+
+![PDF upload and question](assets/demo-upload-and-question.png)
+
+![Cited answer and sources](assets/demo-answer-and-sources.png)
+
 ## Design Decisions
 
 ### Why not embed whole pages?

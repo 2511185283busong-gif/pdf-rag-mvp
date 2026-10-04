@@ -18,7 +18,7 @@ from semantic_search import DEFAULT_MODEL
 
 
 DEFAULT_DEEPSEEK_BASE_URL = "https://api.deepseek.com"
-DEFAULT_DEEPSEEK_MODEL = "deepseek-v4-flash"
+DEFAULT_DEEPSEEK_MODEL = "deepseek-flash"
 
 
 def load_env_file(path: Path) -> None:
@@ -79,12 +79,14 @@ def call_deepseek(
     api_key: str,
     base_url: str,
     model: str,
-    messages: list[dict[str, str]],
+    messages: list[dict[str, Any]],
     max_tokens: int,
     temperature: float,
     thinking: str,
     reasoning_effort: str,
     timeout_seconds: int,
+    tools: list[dict[str, Any]] | None = None,
+    tool_choice: str | dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     endpoint = f"{base_url.rstrip('/')}/chat/completions"
     payload: dict[str, Any] = {
@@ -99,6 +101,10 @@ def call_deepseek(
         payload["reasoning_effort"] = reasoning_effort
     else:
         payload["temperature"] = temperature
+    if tools is not None:
+        payload["tools"] = tools
+    if tool_choice is not None:
+        payload["tool_choice"] = tool_choice
 
     request = urllib.request.Request(
         endpoint,

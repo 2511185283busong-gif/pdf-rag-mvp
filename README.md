@@ -123,6 +123,57 @@ scores.
 
 ![Cited answer and sources](assets/demo-answer-and-sources.png)
 
+## Optional Experiment: Bounded Tool Calling
+
+`scripts/ask_agent.py` adds a small DeepSeek tool-calling experiment to the
+existing pipeline. For each accepted request, Python permits exactly one call
+to one of two local tools:
+
+- `retrieve_pdf` returns reranked evidence and source-page citations.
+- `document_status` reports document metadata and pages flagged for OCR review;
+  it does not perform OCR.
+
+Python validates the tool name and JSON arguments before executing a tool. A
+successful run makes two non-thinking model requests: one to choose the tool,
+then one to answer from its result. There is no tool loop, shell execution,
+arbitrary API access, multi-agent planning, or long-term memory. This experiment
+does not change PDF parsing or retrieval capabilities, and no retrieval
+improvement has been measured for it.
+
+After installing the semantic dependencies and setting `DEEPSEEK_API_KEY` as
+above, prepare a text-layer PDF of your own, then try a content question:
+
+```bash
+.venv/bin/python scripts/parse_pdf.py /path/to/course.pdf -o parsed/course.json
+.venv/bin/python scripts/chunk_json.py parsed/course.json -o chunks/course_chunks.json
+.venv/bin/python scripts/ask_agent.py \
+  chunks/course_chunks.json \
+  "What is the main conclusion of this document?" \
+  --llm-model deepseek-flash \
+  --candidate-k 20 \
+  --top-k 2
+```
+
+For the retrieval tool, add `--allow-download` on the first run if the local
+embedding and reranking models are missing. A document-status question uses
+the same prepared document without loading those models:
+
+```bash
+.venv/bin/python scripts/ask_agent.py \
+  chunks/course_chunks.json \
+  "How many pages and chunks are in this document, and which pages need OCR review?" \
+  --llm-model deepseek-flash
+```
+
+Output includes the selected tool, validated arguments, final answer, and
+retrieved sources when applicable. Add `--json` for the trace and result as JSON.
+Once dependencies are installed, run the offline unit tests without an API key
+or model downloads:
+
+```bash
+.venv/bin/python -m unittest discover -s tests -v
+```
+
 ## Design Decisions
 
 ### Why not embed whole pages?
@@ -329,7 +380,7 @@ the initial run when models are not cached locally.
 Defaults:
 
 - API base URL: `https://api.deepseek.com`
-- Model: `deepseek-v4-flash`
+- Model: `deepseek-flash`
 - Thinking: `disabled`
 - Evidence: source labels, source pages, and chunk text from `context_builder.py`
 

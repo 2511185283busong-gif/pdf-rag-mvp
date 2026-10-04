@@ -23,11 +23,25 @@ os.environ.setdefault("HF_XET_CACHE", str(MODEL_CACHE / "xet"))
 os.environ.setdefault("HF_HUB_DISABLE_XET", "1")
 
 
-def configure_model_loading(local_files_only: bool) -> None:
-    """Avoid Hub metadata calls when a cached model is intentionally offline."""
-    if local_files_only:
-        os.environ.setdefault("HF_HUB_OFFLINE", "1")
-        os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
+def resolve_model_reference(model_name: str, local_files_only: bool) -> str:
+    direct_path = Path(model_name).expanduser()
+    if direct_path.exists():
+        return str(direct_path.resolve())
+    if not local_files_only:
+        return model_name
+
+    cache_repo = MODEL_CACHE / f"models--{model_name.replace('/', '--')}"
+    main_ref = cache_repo / "refs" / "main"
+    if main_ref.exists():
+        revision = main_ref.read_text(encoding="utf-8").strip()
+        snapshot = cache_repo / "snapshots" / revision
+        if revision and snapshot.is_dir():
+            return str(snapshot.resolve())
+
+    raise RuntimeError(
+        f"Model is not available in local cache: {model_name}. "
+        "Run again with --allow-download once while online."
+    )
 
 
 def cosine_similarities(passage_vectors: Any, query_vector: Any) -> np.ndarray:
@@ -57,6 +71,7 @@ def semantic_search(
     top_k: int,
     model_name: str,
     snippet_chars: int,
+    local_files_only: bool = True,
 ) -> dict[str, Any]:
     try:
         from sentence_transformers import SentenceTransformer
@@ -71,7 +86,20 @@ def semantic_search(
     if not chunks:
         raise ValueError("No chunks found in the input JSON.")
 
-    model = SentenceTransformer(model_name, cache_folder=str(MODEL_CACHE))
+    try:
+        model_reference = resolve_model_reference(model_name, local_files_only)
+        model = SentenceTransformer(
+            model_reference,
+            cache_folder=str(MODEL_CACHE),
+            local_files_only=local_files_only,
+        )
+    except Exception as exc:
+        if local_files_only:
+            raise RuntimeError(
+                f"Embedding model is not available in local cache: {model_name}. "
+                "Run again with --allow-download once while online."
+            ) from exc
+        raise
     passage_texts = [f"passage: {chunk.get('text', '')}" for chunk in chunks]
     query_text = f"query: {query}"
 
@@ -168,6 +196,11 @@ def main() -> int:
         action="store_true",
         help="Print machine-readable JSON instead of text output.",
     )
+    parser.add_argument(
+        "--allow-download",
+        action="store_true",
+        help="Allow a model download if it is missing from local cache.",
+    )
     args = parser.parse_args()
     query = " ".join(args.query).strip()
 
@@ -185,6 +218,7 @@ def main() -> int:
             args.top_k,
             args.model,
             args.snippet_chars,
+            local_files_only=not args.allow_download,
         )
     except Exception as exc:
         print(f"Failed to run semantic search: {exc}", file=sys.stderr)

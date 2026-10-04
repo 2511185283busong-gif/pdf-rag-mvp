@@ -13,8 +13,8 @@ from semantic_search import (
     DEFAULT_MODEL,
     MODEL_CACHE,
     cosine_similarities,
-    configure_model_loading,
     make_snippet,
+    resolve_model_reference,
 )
 
 
@@ -28,12 +28,12 @@ def retrieve_candidates(
     candidate_k: int,
     local_files_only: bool,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    configure_model_loading(local_files_only)
     from sentence_transformers import SentenceTransformer
 
     try:
+        model_reference = resolve_model_reference(model_name, local_files_only)
         model = SentenceTransformer(
-            model_name,
+            model_reference,
             cache_folder=str(MODEL_CACHE),
             local_files_only=local_files_only,
         )
@@ -92,12 +92,12 @@ def rerank_candidates(
     model_name: str,
     local_files_only: bool,
 ) -> list[dict[str, Any]]:
-    configure_model_loading(local_files_only)
     from sentence_transformers import CrossEncoder
 
     try:
+        model_reference = resolve_model_reference(model_name, local_files_only)
         model = CrossEncoder(
-            model_name,
+            model_reference,
             cache_folder=str(MODEL_CACHE),
             local_files_only=local_files_only,
         )
@@ -133,7 +133,6 @@ def rerank_search(
     snippet_chars: int,
     local_files_only: bool = True,
 ) -> dict[str, Any]:
-    configure_model_loading(local_files_only)
     try:
         import sentence_transformers  # noqa: F401
     except ImportError as exc:

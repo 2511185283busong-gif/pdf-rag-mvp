@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -15,7 +14,7 @@ from answer_question import (
     DEFAULT_DEEPSEEK_MODEL,
     call_deepseek,
     extract_answer,
-    load_env_file,
+    resolve_deepseek_config,
 )
 from context_builder import build_context
 from rerank_search import DEFAULT_RERANK_MODEL
@@ -148,36 +147,85 @@ def retrieve_pdf_tool(
     )
 
 
+def validate_tool_arguments(tool_name: str, arguments: Any) -> dict[str, Any]:
+    if not isinstance(tool_name, str) or tool_name not in {"retrieve_pdf", "document_status"}:
+        raise RuntimeError(f"Tool call is not allowed: {tool_name}")
+    if not isinstance(arguments, dict):
+        raise RuntimeError("Tool call arguments must be a JSON object.")
+    if tool_name == "document_status":
+        if arguments:
+            raise RuntimeError("document_status does not accept arguments.")
+        return {}
+    if set(arguments) != {"query"} or not isinstance(arguments.get("query"), str):
+        raise RuntimeError("retrieve_pdf requires exactly one string argument: query.")
+    query = arguments["query"].strip()
+    if not query or len(query) > 2000:
+        raise RuntimeError("retrieve_pdf query must contain 1-2000 characters.")
+    return {"query": query}
+
+
+def reject_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"Duplicate JSON argument key: {key}")
+        result[key] = value
+    return result
+
+
+def reject_non_json_constant(value: str) -> None:
+    raise ValueError(f"Invalid JSON constant: {value}")
+
+
 def parse_tool_call(response: dict[str, Any]) -> dict[str, Any]:
-    try:
-        message = response["choices"][0]["message"]
-        tool_calls = message["tool_calls"]
-    except (KeyError, IndexError, TypeError) as exc:
-        raise RuntimeError(f"Expected one DeepSeek tool call, got: {response}") from exc
+    choices = response.get("choices") if isinstance(response, dict) else None
+    if not isinstance(choices, list) or len(choices) != 1 or not isinstance(choices[0], dict):
+        raise RuntimeError("Expected one DeepSeek assistant tool-call message.")
+    message = choices[0].get("message")
+    if not isinstance(message, dict):
+        raise RuntimeError("Expected a DeepSeek assistant tool-call message.")
+    content = message.get("content")
+    if content is not None and not isinstance(content, str):
+        raise RuntimeError("Tool-call message content must be a string or null.")
+    tool_calls = message.get("tool_calls")
 
     if not isinstance(tool_calls, list) or len(tool_calls) != 1:
         raise RuntimeError("The bounded agent requires exactly one tool call.")
 
     tool_call = tool_calls[0]
-    function = tool_call.get("function", {})
+    if not isinstance(tool_call, dict) or tool_call.get("type") != "function":
+        raise RuntimeError("Tool call must be a function call object.")
+    tool_call_id = tool_call.get("id")
+    if not isinstance(tool_call_id, str) or not tool_call_id.strip():
+        raise RuntimeError("Tool call id must be a nonempty string.")
+    function = tool_call.get("function")
+    if not isinstance(function, dict):
+        raise RuntimeError("Tool call function must be an object.")
     name = function.get("name")
-    if name not in {"retrieve_pdf", "document_status"}:
+    if not isinstance(name, str) or name not in {"retrieve_pdf", "document_status"}:
         raise RuntimeError(f"Tool call is not allowed: {name}")
 
+    raw_arguments = function.get("arguments")
+    if not isinstance(raw_arguments, str):
+        raise RuntimeError("Tool call arguments must be an explicit JSON string.")
+
     try:
-        arguments = json.loads(function.get("arguments", "{}"))
-    except json.JSONDecodeError as exc:
+        arguments = json.loads(
+            raw_arguments,
+            object_pairs_hook=reject_duplicate_keys,
+            parse_constant=reject_non_json_constant,
+        )
+    except ValueError as exc:
         raise RuntimeError("Tool call arguments were not valid JSON.") from exc
-    if not isinstance(arguments, dict):
-        raise RuntimeError("Tool call arguments must be a JSON object.")
+    arguments = validate_tool_arguments(name, arguments)
 
     return {
         "assistant_message": {
             "role": "assistant",
-            "content": response["choices"][0]["message"].get("content"),
+            "content": content,
             "tool_calls": tool_calls,
         },
-        "tool_call_id": tool_call.get("id"),
+        "tool_call_id": tool_call_id,
         "name": name,
         "arguments": arguments,
     }
@@ -195,19 +243,13 @@ def execute_tool(
     max_chunk_chars: int,
     local_files_only: bool,
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    arguments = validate_tool_arguments(tool_name, arguments)
     if tool_name == "document_status":
-        if arguments:
-            raise RuntimeError("document_status does not accept arguments.")
         return document_status_tool(chunks_json_path), []
 
-    if set(arguments) != {"query"} or not isinstance(arguments.get("query"), str):
-        raise RuntimeError("retrieve_pdf requires exactly one string argument: query.")
-    query = arguments["query"].strip()
-    if not query or len(query) > 2000:
-        raise RuntimeError("retrieve_pdf query must contain 1-2000 characters.")
     return retrieve_pdf_tool(
         chunks_json_path=chunks_json_path,
-        query=query,
+        query=arguments["query"],
         top_k=top_k,
         candidate_k=candidate_k,
         embedding_model=embedding_model,
@@ -237,6 +279,8 @@ def run_agent(
     reasoning_effort: str,
     timeout_seconds: int,
 ) -> dict[str, Any]:
+    if thinking != "disabled":
+        raise RuntimeError("The bounded agent only supports non-thinking mode.")
     messages: list[dict[str, Any]] = [
         {"role": "system", "content": AGENT_SYSTEM_PROMPT},
         {"role": "user", "content": query},
@@ -349,22 +393,23 @@ def main() -> int:
     parser.add_argument("--allow-download", action="store_true")
     parser.add_argument("--env-file", type=Path, default=Path(".env"))
     parser.add_argument(
-        "--base-url", default=os.environ.get("DEEPSEEK_BASE_URL", DEFAULT_DEEPSEEK_BASE_URL)
+        "--base-url", default=None,
+        help=f"DeepSeek API base URL (default: {DEFAULT_DEEPSEEK_BASE_URL}).",
     )
     parser.add_argument(
-        "--llm-model", default=os.environ.get("DEEPSEEK_MODEL", DEFAULT_DEEPSEEK_MODEL)
+        "--llm-model", default=None,
+        help=f"DeepSeek model (default: {DEFAULT_DEEPSEEK_MODEL}).",
     )
     parser.add_argument("--max-tokens", type=int, default=600)
     parser.add_argument("--temperature", type=float, default=0.2)
-    parser.add_argument("--thinking", choices=["disabled", "enabled"], default="disabled")
-    parser.add_argument("--reasoning-effort", choices=["high", "max"], default="high")
     parser.add_argument("--timeout-seconds", type=int, default=60)
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args()
 
     query = " ".join(args.query).strip()
-    load_env_file(args.env_file)
-    api_key = os.environ.get("DEEPSEEK_API_KEY", "").strip()
+    api_key, base_url, llm_model = resolve_deepseek_config(
+        args.env_file, args.base_url, args.llm_model
+    )
 
     if not query:
         print("query cannot be empty.", file=sys.stderr)
@@ -394,12 +439,12 @@ def main() -> int:
             max_chunk_chars=args.max_chunk_chars,
             local_files_only=not args.allow_download,
             api_key=api_key,
-            base_url=args.base_url,
-            llm_model=args.llm_model,
+            base_url=base_url,
+            llm_model=llm_model,
             max_tokens=args.max_tokens,
             temperature=args.temperature,
-            thinking=args.thinking,
-            reasoning_effort=args.reasoning_effort,
+            thinking="disabled",
+            reasoning_effort="high",
             timeout_seconds=args.timeout_seconds,
         )
     except Exception as exc:

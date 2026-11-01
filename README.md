@@ -235,7 +235,7 @@ The output records document metadata and page-level text:
 
 ```json
 {
-  "schema_version": "0.2.0",
+  "schema_version": "0.3.0",
   "source": {
     "path": "/path/to/course.pdf",
     "file_name": "course.pdf",
@@ -267,6 +267,7 @@ The default output is `chunks/course_chunks.json`. Chunks are built from
 paragraph, bullet, and heading units, then packed to a target length. Size limits
 count a CJK ideograph as two characters because it costs roughly twice as many
 model tokens. Page numbers are provenance metadata, not hard chunk boundaries.
+`page_segments` keeps each page's text so answers can cite the page holding a fact.
 
 Parsing and chunking changes alter chunk ids. Rebuild `parsed/` and `chunks/`
 after upgrading, and re-verify any retrieval labels against the new chunks.
@@ -276,6 +277,7 @@ after upgrading, and re-verify any retrieval labels against the new chunks.
   "chunk_id": "course_chunk_0000",
   "text": "A self-contained semantic passage...",
   "source_pages": [1, 2],
+  "page_segments": [{ "page": 1, "text": "..." }, { "page": 2, "text": "..." }],
   "page_range": "1-2",
   "start_page": 1,
   "end_page": 2,
@@ -453,8 +455,10 @@ different document topics before comparing methods.
 - The semantic models read at most 512 tokens, so overly long chunks are
   truncated by the model. Symbol-heavy text can still exceed this limit.
 - Short pages such as slides are packed together, so one chunk can cite several
-  pages (median 5 and at most 14 on the evaluation lecture). Generated answers
-  can name the wrong page inside that range.
+  pages (median 5 and at most 14 on the evaluation lecture). Context marks each
+  page with `[p#]` so answers can cite one page, and `citation_check` flags a
+  citation outside the retrieved sources. It cannot prove that the cited page holds
+  the fact, and overlap text from an earlier page keeps the next page's marker.
 - Glyphs without a Unicode mapping and lines with no word or multi-digit number
   are dropped, so formulas and figure labels are largely absent from retrieval.
   Removals are counted in the parsed JSON.

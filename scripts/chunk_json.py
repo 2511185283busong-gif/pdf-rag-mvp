@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 
 
-SCHEMA_VERSION = "0.2.0"
+SCHEMA_VERSION = "0.3.0"
 DEFAULT_TARGET_CHARS = 800
 DEFAULT_MAX_CHARS = 1100
 DEFAULT_OVERLAP_CHARS = 120
@@ -288,6 +288,18 @@ def text_tail(text: str, overlap_chars: int) -> str:
     return tail
 
 
+def build_page_segments(units: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Group unit text by page so a citation can name the page that holds a fact."""
+    segments: list[dict[str, Any]] = []
+    for unit in units:
+        page = unit["source_pages"][-1]
+        if segments and segments[-1]["page"] == page:
+            segments[-1]["text"] += f"\n\n{unit['text']}"
+        else:
+            segments.append({"page": page, "text": unit["text"]})
+    return segments
+
+
 def make_chunk(
     chunk_index: int,
     units: list[dict[str, Any]],
@@ -306,6 +318,7 @@ def make_chunk(
         "char_count": len(text),
         "word_count": count_words(text),
         "source_pages": source_pages,
+        "page_segments": build_page_segments(units),
         "page_range": page_range_text(source_pages),
         "start_page": source_pages[0] if source_pages else None,
         "end_page": source_pages[-1] if source_pages else None,

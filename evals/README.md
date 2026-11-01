@@ -97,6 +97,21 @@ rose from 3 to 5 and the maximum from 10 to 14. The cleanup was chosen using the
 same questions, and removing placeholders alone lowered original Hit@2 to 0.90, so
 the reworded results are not an independent test.
 
+### Effect of page markers on citations
+
+Chunks now keep their text by page, and context marks each page with `[p#]`. Chunk
+text is unchanged, so retrieval results stay the same. Across both question sets,
+25 of 26 answers had the evidence chunk in context. Answers citing the exact page
+of the recorded evidence, in one DeepSeek run before and after:
+
+| Measure | Before | After |
+| --- | ---: | ---: |
+| Cited the exact evidence page | 6 of 25 | 24 of 25 |
+| Cited a page or range containing it | 24 of 25 | 24 of 25 |
+
+The remaining answer cites page 81 instead of 80, and page 81 repeats the same
+theorem. These are model outputs from one run, so they can vary between runs.
+
 This is a small benchmark result rather than a general performance claim.
 
 ## Worked Examples

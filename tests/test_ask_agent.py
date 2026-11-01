@@ -219,7 +219,7 @@ class AgentToolValidationTests(unittest.TestCase):
             self.assertIsNone(unavailable["ocr_review_pages"])
 
     def test_retrieval_tool_preserves_evidence_and_source_metadata(self) -> None:
-        source = {"source_id": "S1", "chunk_id": "chunk-1", "page_range": [1, 2],
+        source = {"source_id": "S1", "chunk_id": "chunk-1", "page_range": [1, 2], "source_pages": [1, 2],
                   "rerank_score": 0.9, "text": "synthetic evidence"}
         context = {"context": "[S1] synthetic evidence", "sources": [source]}
         with patch.object(ask_agent, "build_context", return_value=context) as build:
@@ -242,7 +242,7 @@ class AgentRunTests(unittest.TestCase):
         self.check_bounded_run("retrieve_pdf", empty=True)
 
     def check_bounded_run(self, name: str, empty: bool) -> None:
-        source = {"source_id": "S1", "chunk_id": "chunk-1", "page_range": [1, 1], "rerank_score": 0.9}
+        source = {"source_id": "S1", "chunk_id": "chunk-1", "page_range": [1, 1], "source_pages": [1], "rerank_score": 0.9}
         sources = [] if empty or name == "document_status" else [source]
         retrieved = {"context": "" if empty else "[S1] evidence", "sources": sources}
         metadata = {"file_name": "synthetic.pdf", "page_count": 1, "chunk_count": 1}

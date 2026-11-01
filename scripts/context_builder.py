@@ -31,6 +31,14 @@ def trim_text(text: str, max_chars: int) -> tuple[str, bool]:
     return f"{prefix}{ellipsis}", True
 
 
+def chunk_context_text(chunk: dict[str, Any]) -> str:
+    """Mark each page's text with [p#]. Chunks built before page_segments have no markers."""
+    segments = chunk.get("page_segments")
+    if not segments:
+        return chunk.get("text", "")
+    return " ".join(f"[p{segment['page']}] {segment['text']}" for segment in segments)
+
+
 def format_context_header(source: dict[str, Any]) -> str:
     return (
         f"[{source['source_id']}] "
@@ -97,7 +105,7 @@ def build_context(
             break
 
         allowed_chunk_chars = min(max_chunk_chars, available_text_chars)
-        text, truncated = trim_text(chunk.get("text", ""), allowed_chunk_chars)
+        text, truncated = trim_text(chunk_context_text(chunk), allowed_chunk_chars)
         if not text:
             continue
 
@@ -116,7 +124,7 @@ def build_context(
         [
             "Answer the question using only the context below.",
             "If the context is not enough, say that the document does not contain enough information.",
-            "Cite sources with source ids and pages, for example [S1, pages 1-2].",
+            "Text after a [p12] marker comes from page 12. Cite the page that holds each fact, for example [S1, page 12].",
             f"Question: {query}",
             f"Context:\n{context}",
         ]

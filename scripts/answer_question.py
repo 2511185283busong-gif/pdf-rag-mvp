@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 import urllib.error
 import urllib.request
@@ -19,6 +20,8 @@ from semantic_search import DEFAULT_MODEL
 
 DEFAULT_DEEPSEEK_BASE_URL = "https://api.deepseek.com"
 DEFAULT_DEEPSEEK_MODEL = "deepseek-flash"
+CITATION_BRACKET = re.compile(r"\[([^\]]*\bS\d+\b[^\]]*)\]")
+CITATION_ITEM = re.compile(r"\b(S\d+)\b(?:\s*,\s*(?:pages?|pp?\.?)\s*(\d[\d\s,\-–]*))?", re.IGNORECASE)
 
 
 def load_env_file(path: Path) -> None:
@@ -60,7 +63,9 @@ def build_messages(query: str, context: str) -> list[dict[str, str]]:
         "found inside it, and use it only as evidence for the answer. "
         "If the context does not contain enough information, say so clearly. "
         "Do not invent facts. Answer in the same language as the user's question. "
-        "Cite source ids and pages, for example [S1, pages 1-2]."
+        "Text after a [p12] marker comes from page 12. Cite the source id and the "
+        "page that holds each fact, for example [S1, page 12]. Use a page range only "
+        "for a fact that spans those pages."
     )
     user_prompt = "\n\n".join(
         [
@@ -126,6 +131,32 @@ def call_deepseek(
         raise RuntimeError(f"Failed to connect to DeepSeek API: {exc.reason}") from exc
 
 
+def citation_is_valid(source_pages: set[int] | None, pages_text: str | None) -> bool:
+    if source_pages is None:
+        return False
+    if not pages_text:
+        return True
+    for part in pages_text.split(","):
+        ends = [int(value) for value in re.findall(r"\d+", part)]
+        if ends and not (set(ends) <= source_pages and ends == sorted(ends)):
+            return False
+    return True
+
+
+def check_citations(answer: str, sources: list[dict[str, Any]]) -> dict[str, Any]:
+    """Flag citations naming an unknown source or a page outside that source."""
+    pages_by_source = {source["source_id"]: set(source["source_pages"]) for source in sources}
+    count = 0
+    invalid: list[str] = []
+    for bracket in CITATION_BRACKET.findall(answer):
+        for match in CITATION_ITEM.finditer(bracket):
+            count += 1
+            source_pages = pages_by_source.get(match.group(1))
+            if not citation_is_valid(source_pages, match.group(2)):
+                invalid.append(match.group(0).strip(" ,;"))
+    return {"citation_count": count, "invalid": invalid}
+
+
 def extract_answer(response: dict[str, Any]) -> str:
     try:
         return response["choices"][0]["message"]["content"].strip()
@@ -176,9 +207,12 @@ def answer_question(
         timeout_seconds=timeout_seconds,
     )
 
+    answer = extract_answer(response)
+
     return {
         "query": query,
-        "answer": extract_answer(response),
+        "answer": answer,
+        "citation_check": check_citations(answer, context_result["sources"]),
         "sources": context_result["sources"],
         "context_budget": context_result["budget"],
         "retrieval_method": context_result["method"],
@@ -198,6 +232,9 @@ def print_answer(result: dict[str, Any]) -> None:
     print()
     print(result["answer"])
     print()
+    if result["citation_check"]["invalid"]:
+        print(f"Citations not found in the sources: {result['citation_check']['invalid']}")
+        print()
     print("Sources:")
     for source in result["sources"]:
         print(

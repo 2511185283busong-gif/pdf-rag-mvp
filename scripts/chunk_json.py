@@ -12,10 +12,19 @@ from pathlib import Path
 from typing import Any
 
 
-SCHEMA_VERSION = "0.1.0"
+SCHEMA_VERSION = "0.2.0"
 DEFAULT_TARGET_CHARS = 800
 DEFAULT_MAX_CHARS = 1100
 DEFAULT_OVERLAP_CHARS = 120
+CJK_IDEOGRAPHS = "㐀-鿿豈-﫿"
+CJK_TEXT = f"{CJK_IDEOGRAPHS}　-〿＀-￯"
+CJK_NUMERALS = "一二三四五六七八九十百千零〇"
+CJK_HEADING_PATTERN = (
+    f"^(第[{CJK_NUMERALS}\\d]+[章节部分篇条讲]"
+    f"|[{CJK_NUMERALS}]+[、．]"
+    f"|[（(][{CJK_NUMERALS}\\d]+[）)]"
+    r"|\d+(\.\d+)*[、．])"
+)
 
 
 def normalize_inline_text(text: str) -> str:
@@ -30,7 +39,13 @@ def normalize_unit_text(text: str) -> str:
     text = re.sub(r"(\w)-\s+(\w)", r"\1\2", text)
     text = re.sub(r"\s*\n\s*", " ", text)
     text = re.sub(r"\s{2,}", " ", text)
+    text = re.sub(f"(?<=[{CJK_IDEOGRAPHS}]) (?=[{CJK_IDEOGRAPHS}])", "", text)
     return text.strip()
+
+
+def text_size(text: str) -> int:
+    """Measure text for chunk limits; an ideograph costs about two Latin characters in tokens."""
+    return len(text) + len(re.findall(f"[{CJK_IDEOGRAPHS}]", text))
 
 
 def count_words(text: str) -> int:
@@ -68,11 +83,30 @@ def starts_new_unit(line: str) -> bool:
         return False
     if re.match(r"^(\d+(\.\d+)*|[A-Z])[\).]\s+\S+", stripped):
         return True
+    if re.match(CJK_HEADING_PATTERN, stripped):
+        return True
+    if re.match(r"^[•·▪◦●○■□‣*–—-]\s+\S", stripped):
+        return True
     if stripped.endswith(":") and len(stripped) <= 90:
+        return True
+    if stripped.endswith("：") and len(stripped) <= 40:
         return True
     if re.match(r"^(Dear\s+\w+|Best regards,?)$", stripped, re.IGNORECASE):
         return True
     return False
+
+
+def is_cjk_boundary(previous: str, current: str) -> bool:
+    if not previous or not current:
+        return False
+    return bool(
+        re.match(f"[{CJK_TEXT}]", previous[-1]) or re.match(f"[{CJK_TEXT}]", current[0])
+    )
+
+
+def join_text(previous: str, current: str) -> str:
+    separator = "" if is_cjk_boundary(previous, current) else " "
+    return f"{previous}{separator}{current}"
 
 
 def join_line(previous: str, current: str) -> str:
@@ -80,15 +114,11 @@ def join_line(previous: str, current: str) -> str:
     current = current.strip()
     if previous.endswith("-") and current and current[0].islower():
         return f"{previous[:-1]}{current}"
-    return f"{previous} {current}"
+    return join_text(previous, current)
 
 
-def split_page_into_units(page: dict[str, Any]) -> list[dict[str, Any]]:
-    page_number = int(page["page_number"])
-    text = normalize_inline_text(page.get("text", ""))
-    if not text:
-        return []
-
+def split_paragraph_into_units(paragraph: str, page_number: int) -> list[dict[str, Any]]:
+    text = normalize_inline_text(paragraph)
     lines = [line.strip() for line in text.split("\n") if line.strip()]
     units: list[dict[str, Any]] = []
     current = ""
@@ -119,6 +149,17 @@ def split_page_into_units(page: dict[str, Any]) -> list[dict[str, Any]]:
     return units
 
 
+def split_page_into_units(page: dict[str, Any]) -> list[dict[str, Any]]:
+    page_number = int(page["page_number"])
+    text = page.get("text", "").replace("\r\n", "\n").replace("\r", "\n")
+    units: list[dict[str, Any]] = []
+
+    for paragraph in re.split(r"\n\s*\n", text):
+        units.extend(split_paragraph_into_units(paragraph, page_number))
+
+    return units
+
+
 def build_semantic_units(pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
     units: list[dict[str, Any]] = []
 
@@ -128,30 +169,43 @@ def build_semantic_units(pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return units
 
 
-def split_long_text(text: str, max_chars: int) -> list[str]:
-    sentences = [
-        part.strip()
-        for part in re.split(r"(?<=[.!?。！？;；])\s+", text)
-        if part.strip()
-    ]
-    if len(sentences) <= 1:
-        return split_by_size(text, max_chars)
+def split_sentences(text: str) -> list[str]:
+    marked = re.sub(r"([。！？；][”’」』）)]*)\s*", "\\1\n", text)
+    marked = re.sub(r"(?<=[.!?;])\s+", "\n", marked)
+    return [part.strip() for part in marked.split("\n") if part.strip()]
 
+
+def split_oversized_sentence(sentence: str, max_chars: int) -> list[str]:
+    marked = re.sub(r"([，、：])\s*", "\\1\n", sentence)
+    marked = re.sub(r"(?<=[,:])\s+", "\n", marked)
+    pieces: list[str] = []
+    for clause in marked.split("\n"):
+        clause = clause.strip()
+        if text_size(clause) > max_chars:
+            pieces.extend(split_by_size(clause, max_chars))
+        elif clause:
+            pieces.append(clause)
+    return pieces
+
+
+def split_long_text(text: str, max_chars: int) -> list[str]:
     parts: list[str] = []
     current = ""
 
-    for sentence in sentences:
-        candidate = sentence if not current else f"{current} {sentence}"
-        if len(candidate) <= max_chars:
-            current = candidate
-            continue
-        if current:
-            parts.append(current)
-        current = sentence
-
-        if len(current) > max_chars:
-            parts.extend(split_by_size(current, max_chars))
-            current = ""
+    for sentence in split_sentences(text):
+        pieces = (
+            [sentence]
+            if text_size(sentence) <= max_chars
+            else split_oversized_sentence(sentence, max_chars)
+        )
+        for piece in pieces:
+            candidate = piece if not current else join_text(current, piece)
+            if text_size(candidate) <= max_chars:
+                current = candidate
+                continue
+            if current:
+                parts.append(current)
+            current = piece
 
     if current:
         parts.append(current)
@@ -168,18 +222,20 @@ def split_by_size(text: str, max_chars: int) -> list[str]:
     current = ""
 
     for word in words:
-        if len(word) > max_chars:
+        if text_size(word) > max_chars:
             if current:
                 parts.append(current)
                 current = ""
-            while len(word) > max_chars:
-                parts.append(word[:max_chars])
-                word = word[max_chars:]
+            # Ideographs count double, so halve the slice length for them.
+            slice_chars = max(max_chars // 2, 1) if text_size(word) > len(word) else max_chars
+            while text_size(word) > max_chars:
+                parts.append(word[:slice_chars])
+                word = word[slice_chars:]
             current = word
             continue
 
         candidate = word if not current else f"{current} {word}"
-        if len(candidate) <= max_chars:
+        if text_size(candidate) <= max_chars:
             current = candidate
             continue
 
@@ -202,7 +258,7 @@ def expand_oversized_units(
 
     for unit in units:
         text = unit["text"]
-        if len(text) <= max_chars:
+        if text_size(text) <= max_chars:
             expanded.append(unit)
             continue
 
@@ -223,7 +279,12 @@ def text_tail(text: str, overlap_chars: int) -> str:
     tail = text[-overlap_chars:].strip()
     boundary = max(tail.find(". "), tail.find("。"), tail.find("\n"))
     if boundary > 0 and boundary + 1 < len(tail):
-        tail = tail[boundary + 1 :].strip()
+        return tail[boundary + 1 :].strip()
+    # The cut usually lands inside a word, so start at the next whole one.
+    space = tail.find(" ")
+    cut_inside_word = not text[-overlap_chars - 1].isspace()
+    if cut_inside_word and space > 0 and space + 1 < len(tail):
+        return tail[space + 1 :].strip()
     return tail
 
 
@@ -290,7 +351,7 @@ def chunk_units(
     previous_tail_pages: list[int] = []
 
     for unit in expand_oversized_units(units, max_chars):
-        unit_len = len(unit["text"])
+        unit_len = text_size(unit["text"])
         separator_len = 2 if current_units else 0
         candidate_len = current_len + separator_len + unit_len
 
@@ -301,8 +362,11 @@ def chunk_units(
                 previous_tail = text_tail(chunk["text"], overlap_chars)
                 previous_tail_pages = tail_source_pages(current_units)
                 current_units = overlap_units(previous_tail, previous_tail_pages)
-                current_len = len(previous_tail)
-            else:
+                current_len = text_size(previous_tail)
+
+            # Drop the overlap when it would push this unit past the hard limit.
+            if not has_content_unit(current_units) and current_len + 2 + unit_len > max_chars:
+                previous_tail = ""
                 current_units = []
                 current_len = 0
 
@@ -315,7 +379,7 @@ def chunk_units(
             previous_tail = text_tail(chunk["text"], overlap_chars)
             previous_tail_pages = tail_source_pages(current_units)
             current_units = overlap_units(previous_tail, previous_tail_pages)
-            current_len = len(previous_tail)
+            current_len = text_size(previous_tail)
 
     if current_units and has_content_unit(current_units):
         chunks.append(make_chunk(len(chunks), current_units, document_id, previous_tail))
@@ -361,6 +425,7 @@ def build_chunks(
             "target_chars": target_chars,
             "max_chars": max_chars,
             "overlap_chars": overlap_chars,
+            "size_unit": "characters, with CJK ideographs counted twice",
             "notes": "Pages are metadata only. Page changes do not force chunk boundaries.",
         },
         "document": {

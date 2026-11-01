@@ -6,7 +6,9 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import re
+import statistics
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -15,7 +17,20 @@ from typing import Any
 import pdfplumber
 
 
-SCHEMA_VERSION = "0.1.0"
+SCHEMA_VERSION = "0.2.0"
+
+# Gaps wider than this fraction of the font size become word breaks. A fixed
+# tolerance glues words together when a small font's space is narrower than it.
+X_TOLERANCE_RATIO = 0.15
+# Some fonts encode small capitals as private-use glyphs U+F761-U+F77A.
+SMALL_CAPS_TO_ASCII = {
+    code_point: chr(ord("a") + code_point - 0xF761)
+    for code_point in range(0xF761, 0xF77B)
+}
+PARAGRAPH_GAP_RATIO = 1.5
+HEADER_FOOTER_BAND = 0.15
+REPEATED_LINE_MIN_PAGES = 3
+REPEATED_LINE_MIN_SHARE = 0.5
 
 
 def sha256_file(path: Path) -> str:
@@ -27,10 +42,89 @@ def sha256_file(path: Path) -> str:
 
 
 def normalize_text(text: str) -> str:
+    text = text.translate(SMALL_CAPS_TO_ASCII)
     text = text.replace("\r\n", "\n").replace("\r", "\n")
     text = re.sub(r"[ \t]+\n", "\n", text)
     text = re.sub(r"\n{3,}", "\n\n", text)
     return text.strip()
+
+
+def extract_page_lines(page: Any) -> list[dict[str, Any]]:
+    lines = page.extract_text_lines(
+        x_tolerance_ratio=X_TOLERANCE_RATIO,
+        return_chars=False,
+    )
+    return [
+        {"text": line["text"], "top": float(line["top"]), "bottom": float(line["bottom"])}
+        for line in lines
+        if line["text"].strip()
+    ]
+
+
+def repeated_line_key(text: str) -> str:
+    return re.sub(r"\d+", "#", " ".join(text.split())).casefold()
+
+
+def is_in_header_footer_band(line: dict[str, Any], page_height: float) -> bool:
+    band = page_height * HEADER_FOOTER_BAND
+    return line["top"] <= band or line["bottom"] >= page_height - band
+
+
+def find_repeated_lines(
+    pages_lines: list[list[dict[str, Any]]],
+    page_heights: list[float],
+) -> set[str]:
+    """Find headers and footers: lines repeating near the page edge across a document."""
+    page_counts: dict[str, int] = {}
+    for lines, height in zip(pages_lines, page_heights):
+        keys = {
+            repeated_line_key(line["text"])
+            for line in lines
+            if is_in_header_footer_band(line, height)
+        }
+        for key in keys:
+            page_counts[key] = page_counts.get(key, 0) + 1
+
+    min_pages = max(
+        REPEATED_LINE_MIN_PAGES,
+        math.ceil(len(pages_lines) * REPEATED_LINE_MIN_SHARE),
+    )
+    return {key for key, count in page_counts.items() if count >= min_pages}
+
+
+def split_repeated_lines(
+    lines: list[dict[str, Any]],
+    page_height: float,
+    repeated_keys: set[str],
+) -> tuple[list[dict[str, Any]], list[str]]:
+    kept: list[dict[str, Any]] = []
+    removed: list[str] = []
+    for line in lines:
+        if (
+            is_in_header_footer_band(line, page_height)
+            and repeated_line_key(line["text"]) in repeated_keys
+        ):
+            removed.append(line["text"])
+        else:
+            kept.append(line)
+    return kept, removed
+
+
+def lines_to_text(lines: list[dict[str, Any]]) -> str:
+    """Join lines, marking unusually large vertical gaps as paragraph breaks."""
+    if not lines:
+        return ""
+
+    steps = [current["top"] - previous["top"] for previous, current in zip(lines, lines[1:])]
+    positive_steps = [step for step in steps if step > 0]
+    typical_step = statistics.median(positive_steps) if len(positive_steps) >= 2 else None
+
+    parts = [lines[0]["text"]]
+    for step, line in zip(steps, lines[1:]):
+        is_paragraph_break = typical_step is not None and step > typical_step * PARAGRAPH_GAP_RATIO
+        parts.append("\n\n" if is_paragraph_break else "\n")
+        parts.append(line["text"])
+    return "".join(parts)
 
 
 def count_words(text: str) -> int:
@@ -50,35 +144,50 @@ def parse_pdf(pdf_path: Path, min_text_chars: int) -> dict[str, Any]:
     warnings: list[str] = []
 
     with pdfplumber.open(str(pdf_path)) as pdf:
+        pages_lines: list[list[dict[str, Any]]] = []
+        extraction_errors: list[str | None] = []
         for page_index, page in enumerate(pdf.pages):
-            page_number = page_index + 1
             extraction_error = None
 
             try:
-                raw_text = page.extract_text() or ""
+                lines = extract_page_lines(page)
             except Exception as exc:  # Keep one bad page from failing the whole file.
-                raw_text = ""
+                lines = []
                 extraction_error = f"{type(exc).__name__}: {exc}"
+                warnings.append(f"Page {page_index + 1}: {extraction_error}")
 
-            text = normalize_text(raw_text)
-            char_count = len(text)
-            needs_ocr = char_count < min_text_chars
+            pages_lines.append(lines)
+            extraction_errors.append(extraction_error)
 
-            if extraction_error:
-                warnings.append(f"Page {page_number}: {extraction_error}")
+        page_heights = [float(page.height) for page in pdf.pages]
+        repeated_keys = find_repeated_lines(pages_lines, page_heights)
+        repeated_lines: dict[str, str] = {}
+
+        for page_index, page in enumerate(pdf.pages):
+            lines = pages_lines[page_index]
+            # OCR review looks at everything extracted, including headers and footers.
+            needs_ocr = len(normalize_text(lines_to_text(lines))) < min_text_chars
+            kept_lines, removed_lines = split_repeated_lines(
+                lines, page_heights[page_index], repeated_keys
+            )
+            removed_lines = [normalize_text(line) for line in removed_lines]
+            for line in removed_lines:
+                repeated_lines.setdefault(repeated_line_key(line), line)
+            text = normalize_text(lines_to_text(kept_lines))
 
             pages.append(
                 {
                     "page_index": page_index,
-                    "page_number": page_number,
+                    "page_number": page_index + 1,
                     "width": round(float(page.width), 2),
                     "height": round(float(page.height), 2),
-                    "char_count": char_count,
+                    "char_count": len(text),
                     "word_count": count_words(text),
-                    "has_text": char_count > 0,
+                    "has_text": bool(text),
                     "needs_ocr": needs_ocr,
                     "text": text,
-                    "extraction_error": extraction_error,
+                    "removed_lines": removed_lines,
+                    "extraction_error": extraction_errors[page_index],
                 }
             )
 
@@ -97,10 +206,12 @@ def parse_pdf(pdf_path: Path, min_text_chars: int) -> dict[str, Any]:
             "name": "pdfplumber",
             "version": getattr(pdfplumber, "__version__", "unknown"),
             "min_text_chars_for_ocr_flag": min_text_chars,
+            "x_tolerance_ratio": X_TOLERANCE_RATIO,
         },
         "document": {
             "page_count": len(pages),
             "metadata": metadata,
+            "repeated_lines_removed": sorted(repeated_lines.values()),
         },
         "pages": pages,
         "warnings": warnings,

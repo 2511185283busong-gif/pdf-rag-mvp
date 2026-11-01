@@ -463,7 +463,8 @@ different document topics before comparing methods.
   the fact, and overlap text from an earlier page keeps the next page's marker.
 - Sources scoring below -5.0 on the default reranker are left out of the context.
   This value comes from one lecture and eight off-topic questions, and another
-  reranker needs its own value. Off-topic questions above it rely on the model to
+  reranker needs its own value. With no sources left, a fixed reply is returned
+  without calling the model. Off-topic questions above it rely on the model to
   decline.
 - Glyphs without a Unicode mapping and lines with no word or multi-digit number
   are dropped, so formulas and figure labels are largely absent from retrieval.

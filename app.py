@@ -142,7 +142,8 @@ if ask_clicked:
             invalid_citations = result["answer"]["citation_check"]["invalid"]
             if invalid_citations:
                 st.warning(f"Citations not found in the sources: {', '.join(invalid_citations)}")
-            render_sources(result["answer"]["sources"])
+            if result["answer"]["sources"]:
+                render_sources(result["answer"]["sources"])
 
             with st.expander("Run details"):
                 st.json(

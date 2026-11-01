@@ -238,8 +238,15 @@ class AgentRunTests(unittest.TestCase):
             with self.subTest(tool=name):
                 self.check_bounded_run(name, empty=False)
 
-    def test_empty_retrieval_evidence_still_has_a_single_answer_call(self) -> None:
-        self.check_bounded_run("retrieve_pdf", empty=True)
+    def test_empty_retrieval_declines_without_an_answer_call(self) -> None:
+        retrieved = {"context": "", "sources": []}
+        with patch.object(ask_agent, "call_deepseek", return_value=tool_response()) as model, \
+             patch.object(ask_agent, "retrieve_pdf_tool", return_value=(retrieved, [])):
+            result = ask_agent.run_agent(**{**RUN_SETTINGS, "query": "文档里有吗？"})
+
+        self.assertEqual(model.call_count, 1)
+        self.assertEqual(result["answer"], "这份文档中没有找到足以回答这个问题的内容。")
+        self.assertEqual(result["sources"], [])
 
     def check_bounded_run(self, name: str, empty: bool) -> None:
         source = {"source_id": "S1", "chunk_id": "chunk-1", "page_range": [1, 1], "source_pages": [1], "rerank_score": 0.9}

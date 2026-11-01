@@ -47,19 +47,19 @@
     {
       "id": "distributed-breakout-limitation",
       "query": "Distributed Breakout 的主要局限性是什么？",
-      "relevant_chunk_ids": ["Lecture 8b Distributed Constraints_chunk_0013", "Lecture 8b Distributed Constraints_chunk_0014"],
+      "relevant_chunk_ids": ["Lecture 8b Distributed Constraints_chunk_0014"],
       "verified_pages": [80]
     },
     {
       "id": "adopt-message-types",
       "query": "ADOPT 算法中的 threshold、value 和 cost 消息分别传递什么信息？",
-      "relevant_chunk_ids": ["Lecture 8b Distributed Constraints_chunk_0015"],
+      "relevant_chunk_ids": ["Lecture 8b Distributed Constraints_chunk_0016"],
       "verified_pages": [85]
     },
     {
       "id": "adopt-optapo-comparison",
       "query": "通信快或慢时，ADOPT 和 OptAPO 分别更适合哪种情况？",
-      "relevant_chunk_ids": ["Lecture 8b Distributed Constraints_chunk_0017"],
+      "relevant_chunk_ids": ["Lecture 8b Distributed Constraints_chunk_0018"],
       "verified_pages": [101]
     }
   ]

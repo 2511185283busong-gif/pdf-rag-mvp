@@ -23,7 +23,7 @@ Run the evaluation after creating the lecture chunks:
 
 Evaluation configuration:
 
-- 18 chunks from a 101-page lecture.
+- 19 chunks from a 101-page lecture.
 - `intfloat/multilingual-e5-small` for dense recall.
 - `cross-encoder/mmarco-mMiniLMv2-L12-H384-v1` for reranking.
 
@@ -31,31 +31,72 @@ Original set (10 Chinese questions):
 
 | Candidate K | Method | Final sources | Hit | MRR |
 | ---: | --- | ---: | ---: | ---: |
-| 10 | Dense embedding only | 3 | 0.80 | 0.47 |
-| 10 | Dense embedding plus rerank | 3 | 1.00 | 0.85 |
-| 20 | Dense embedding plus rerank | 3 | 1.00 | 0.85 |
-| 18 | Dense embedding plus rerank (all chunks) | 3 | 1.00 | 0.85 |
-| 20 | Dense embedding plus rerank (answer default) | 2 | 1.00 | 0.85 |
-| 20 | Dense embedding plus rerank | 1 | 0.70 | 0.70 |
+| 10 | Dense embedding only | 3 | 0.90 | 0.62 |
+| 10 | Dense embedding plus rerank | 3 | 1.00 | 0.90 |
+| 20 | Dense embedding plus rerank | 3 | 1.00 | 0.90 |
+| 20 | Dense embedding plus rerank (answer default) | 2 | 1.00 | 0.90 |
+| 20 | Dense embedding plus rerank | 1 | 0.80 | 0.80 |
 
 Reworded set (16 Chinese and English questions):
 
 | Candidate K | Method | Final sources | Hit | MRR |
 | ---: | --- | ---: | ---: | ---: |
-| 20 | Dense embedding only | 3 | 0.69 | 0.63 |
-| 10 | Dense embedding plus rerank | 3 | 0.81 | 0.78 |
-| 20 | Dense embedding plus rerank | 3 | 0.94 | 0.88 |
-| 20 | Dense embedding plus rerank (answer default) | 2 | 0.94 | 0.88 |
-| 20 | Dense embedding plus rerank | 1 | 0.81 | 0.81 |
+| 20 | Dense embedding only | 3 | 0.81 | 0.73 |
+| 10 | Dense embedding plus rerank | 3 | 0.94 | 0.91 |
+| 20 | Dense embedding plus rerank | 3 | 0.94 | 0.91 |
+| 20 | Dense embedding plus rerank (answer default) | 2 | 0.94 | 0.91 |
+| 20 | Dense embedding plus rerank | 1 | 0.88 | 0.88 |
 
-Candidate K is a recall-versus-ranking tradeoff: K=10 matches K=20 on the original
-set but loses evidence on the reworded set. The one remaining reworded miss is
-`r-ok-zh`, where the correct chunk is not in the reranked Top 3.
+K=10 and K=20 give the same results on this lecture because it has only 19 chunks.
+The one remaining reworded miss is `r-ok-zh`, where the correct chunk is not in the
+reranked Top 3.
 
 Relevant chunks are the ones whose text contains the recorded evidence sentence,
 so a sentence repeated on another slide or kept by chunk overlap can have several
 valid chunks. This keeps the labels aligned with the evidence rather than treating
 a valid hit as a miss.
+
+## Generated Chinese Manual
+
+`generate_zh_manual.py` writes a 36-page fictional operations manual as HTML, and
+`zh_manual_cases.json` holds 29 questions about it plus 8 it cannot answer. Being
+fictional, it cannot be answered from general knowledge. It also has 24 near-identical
+service appendices to create confusable text. Build it with:
+
+```bash
+python3 evals/generate_zh_manual.py /tmp/manual.html
+"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless=new \
+  --no-pdf-header-footer --print-to-pdf=/tmp/manual.pdf file:///tmp/manual.html
+.venv/bin/python scripts/parse_pdf.py /tmp/manual.pdf -o parsed/manual.json
+.venv/bin/python scripts/chunk_json.py parsed/manual.json -o chunks/manual_chunks.json
+.venv/bin/python scripts/evaluate_retrieval.py chunks/manual_chunks.json \
+  evals/zh_manual_cases.json --candidate-k 11 --top-k 2
+```
+
+| Method | Final sources | Hit | MRR |
+| --- | ---: | ---: | ---: |
+| Dense embedding only | 3 | 0.72 | 0.61 |
+| Dense embedding plus rerank | 3 | 1.00 | 1.00 |
+| Dense embedding plus rerank (answer default) | 2 | 1.00 | 1.00 |
+| Dense embedding plus rerank | 1 | 1.00 | 1.00 |
+
+In one DeepSeek run all 29 answers contained the expected value and cited the
+evidence page. All 8 unanswerable questions were declined by both the direct pipeline
+and the agent, but only 4 were stopped by the -5.0 floor: relevant chunks scored as low
+as -4.4 and unanswerable ones as high as -3.34, so the two ranges overlap.
+
+These results are easier than a real document. The same author wrote the manual and
+the questions, each fact sits in one plain sentence, and the document has only 11
+chunks. They are useful as a regression check, not as evidence of general quality.
+
+This document exposed two bugs the lecture could not. Its PDF mapped ideographs to
+look-alike radicals, such as U+2F3F for 手, and the low-information filter deleted the
+table row `1 5 3`. Both are fixed. On the lecture this restored 61 lines, moving
+reworded Top 2 from Hit 0.94 / MRR 0.88 to 0.94 / 0.91, and original Top 1 from 0.70
+to 0.80.
+
+Asking for the question's language in the prompt also helps only partly: 6 of 14
+replies to mostly English questions about the manual were still in Chinese.
 
 ### Effect of the extraction and chunking fix
 
@@ -136,7 +177,8 @@ Keyword search did not help. Fusing BM25 or dense ranks with the reranker by
 reciprocal rank never beat the reranker alone, and lowered original Top 2 Hit from
 1.00 to 0.80. `r-ok-zh` stays at rank 4 or lower in each option.
 
-Smaller chunks were too unstable to justify a new default, with K=20:
+Smaller chunks were too unstable to justify a new default, with K=20 and before the
+radical and table fixes:
 
 | Target chars | Chunks | Original Hit@2 | Reworded Hit@2 | Reworded Hit@3 |
 | ---: | ---: | ---: | ---: | ---: |

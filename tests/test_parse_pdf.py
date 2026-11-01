@@ -67,17 +67,30 @@ class NoiseTests(unittest.TestCase):
             def extract_text_lines(self, **kwargs: object) -> list[dict]:
                 return [{"text": "\uf772\uf765\uf776(x, y)", "top": 1, "bottom": 2}]
 
-        kept, removed = split_low_information_lines(extract_page_lines(FakePage()))
+        kept, removed = split_low_information_lines(extract_page_lines(FakePage()), body_height=1.0)
 
         self.assertEqual([item["text"] for item in kept], ["rev(x, y)"])
         self.assertEqual(removed, [])
 
+    def test_radicals_become_ideographs(self) -> None:
+        self.assertEqual(normalize_text("\u2f3f册 第 1 \u2eda \u2f64"), "手册 第 1 页 用")
+
+    def test_body_size_digit_rows_are_kept_and_subscripts_are_not(self) -> None:
+        subscript = {"text": "1 2 1 2", "top": 110.0, "bottom": 114.0}
+        table_row = line("1 5 3", 120)
+        lines = [line("Body text", 100), table_row, subscript, line("Other text", 130)]
+
+        kept, removed = split_low_information_lines(lines, body_height=10.0)
+
+        self.assertIn(table_row, kept)
+        self.assertEqual(removed, [subscript])
+
     def test_lines_without_content_are_separated(self) -> None:
-        contentful = ["ok?(x ,,0) =", "Year 2024", "12 34 56", "第一", "是", "2 then return"]
-        fragments = ["x = ∨x =", "1 2 1 2 1 2", "¬(x = ∧x = )", "n", ")"]
+        contentful = ["ok?(x ,,0) =", "Year 2024", "12 34 56", "第一", "是", "2 then return", "1 2 1 2"]
+        fragments = ["x = ∨x =", "¬(x = ∧x = )", "n", ")", "7"]
         lines = [line(text, 100) for text in contentful + fragments]
 
-        kept, removed = split_low_information_lines(lines)
+        kept, removed = split_low_information_lines(lines, body_height=10.0)
 
         self.assertEqual([item["text"] for item in kept], contentful)
         self.assertEqual([item["text"] for item in removed], fragments)

@@ -73,7 +73,8 @@ def build_messages(query: str, context: str) -> list[dict[str, str]]:
         [
             f"Question: {query}",
             f"Context:\n{context}",
-            "Write a concise answer with citations.",
+            "Write a concise answer with citations, in the language of the question, "
+            "even if the context uses another language.",
         ]
     )
     return [

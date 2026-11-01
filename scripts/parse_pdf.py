@@ -10,6 +10,7 @@ import math
 import re
 import statistics
 import sys
+import unicodedata
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -17,7 +18,7 @@ from typing import Any
 import pdfplumber
 
 
-SCHEMA_VERSION = "0.3.0"
+SCHEMA_VERSION = "0.4.0"
 
 # Gaps wider than this fraction of the font size become word breaks. A fixed
 # tolerance glues words together when a small font's space is narrower than it.
@@ -33,6 +34,21 @@ UNMAPPED_GLYPH = re.compile(r"\(cid:\d+\)")
 # A line needs a word, a multi-digit number or an ideograph to count as content.
 # Formula fragments such as "x = ∨x =" and subscript rows such as "1 2 1 2" have none.
 LINE_CONTENT = re.compile(r"[^\W\d_]{2,}|\d{2,}|[\u4e00-\u9fff]")
+# Single-digit table rows also lack content, but unlike subscripts they use body-size text.
+NUMERIC_ROW = re.compile(r"\d+(?:\s+\d+)+")
+BODY_TEXT_HEIGHT_RATIO = 0.8
+# Some PDFs map common ideographs to look-alike radicals, such as U+2F3F for 手
+# and U+2EDA for 页. They look right but do not match the real characters.
+RADICALS_TO_IDEOGRAPHS = {
+    **{
+        code_point: unicodedata.normalize("NFKC", chr(code_point))
+        for code_point in range(0x2F00, 0x2FD6)
+    },
+    **str.maketrans(
+        "⺠⻄⻅⻆⻈⻉⻋⻒⻓⻔⻘⻙⻚⻛⻜⻝⻢⻣⻥⻬⻮⻰",
+        "民西见角讠贝车长长门青韦页风飞食马骨鱼齐齿龙",
+    ),
+}
 PARAGRAPH_GAP_RATIO = 1.5
 HEADER_FOOTER_BAND = 0.15
 REPEATED_LINE_MIN_PAGES = 3
@@ -48,7 +64,7 @@ def sha256_file(path: Path) -> str:
 
 
 def normalize_text(text: str) -> str:
-    text = text.translate(SMALL_CAPS_TO_ASCII)
+    text = text.translate(SMALL_CAPS_TO_ASCII).translate(RADICALS_TO_IDEOGRAPHS)
     text = text.replace("\r\n", "\n").replace("\r", "\n")
     text = re.sub(r"[ \t]+\n", "\n", text)
     text = re.sub(r"\n{3,}", "\n\n", text)
@@ -68,7 +84,11 @@ def extract_page_lines(page: Any) -> list[dict[str, Any]]:
     extracted = []
     for line in lines:
         # Small capitals become letters here so the content check can read them.
-        text = strip_unmapped_glyphs(line["text"]).translate(SMALL_CAPS_TO_ASCII)
+        text = (
+            strip_unmapped_glyphs(line["text"])
+            .translate(SMALL_CAPS_TO_ASCII)
+            .translate(RADICALS_TO_IDEOGRAPHS)
+        )
         if text.strip():
             extracted.append(
                 {"text": text, "top": float(line["top"]), "bottom": float(line["bottom"])}
@@ -80,11 +100,23 @@ def count_unmapped_glyphs(page: Any) -> int:
     return sum(1 for char in page.chars if UNMAPPED_GLYPH.fullmatch(char["text"]))
 
 
+def line_height(line: dict[str, Any]) -> float:
+    return line["bottom"] - line["top"]
+
+
 def split_low_information_lines(
     lines: list[dict[str, Any]],
+    body_height: float,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    kept = [line for line in lines if LINE_CONTENT.search(line["text"])]
-    removed = [line for line in lines if not LINE_CONTENT.search(line["text"])]
+    def has_content(line: dict[str, Any]) -> bool:
+        if LINE_CONTENT.search(line["text"]):
+            return True
+        return bool(NUMERIC_ROW.fullmatch(line["text"])) and (
+            line_height(line) >= body_height * BODY_TEXT_HEIGHT_RATIO
+        )
+
+    kept = [line for line in lines if has_content(line)]
+    removed = [line for line in lines if not has_content(line)]
     return kept, removed
 
 
@@ -188,6 +220,10 @@ def parse_pdf(pdf_path: Path, min_text_chars: int) -> dict[str, Any]:
 
         page_heights = [float(page.height) for page in pdf.pages]
         repeated_keys = find_repeated_lines(pages_lines, page_heights)
+        # Measured across the document: subscripts dominate a formula page's own median.
+        body_height = statistics.median(
+            [line_height(line) for lines in pages_lines for line in lines] or [0.0]
+        )
         repeated_lines: dict[str, str] = {}
 
         for page_index, page in enumerate(pdf.pages):
@@ -197,7 +233,9 @@ def parse_pdf(pdf_path: Path, min_text_chars: int) -> dict[str, Any]:
             kept_lines, removed_lines = split_repeated_lines(
                 lines, page_heights[page_index], repeated_keys
             )
-            kept_lines, low_information_lines = split_low_information_lines(kept_lines)
+            kept_lines, low_information_lines = split_low_information_lines(
+                kept_lines, body_height
+            )
             removed_lines = [normalize_text(line) for line in removed_lines]
             for line in removed_lines:
                 repeated_lines.setdefault(repeated_line_key(line), line)

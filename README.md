@@ -31,7 +31,7 @@ flowchart LR
 
 - Page-level PDF parsing with page metadata carried through to final citations.
 - Font-size-aware word spacing, small-capital glyph recovery, and removal of
-  repeated headers and footers.
+  repeated headers, footers, and formula noise.
 - Rule-based chunking on paragraphs, bullets, headings, and English or Chinese
   sentences, with overlap and source-page provenance.
 - Multilingual dense retrieval using `intfloat/multilingual-e5-small`.
@@ -42,19 +42,22 @@ flowchart LR
 
 ## Verified Retrieval Improvement
 
-On a 101-page lecture split into 32 chunks, 10 manually verified questions were
-used to compare dense-retrieval ordering with reranked ordering. All 10 questions
-are Chinese and the lecture is English, so this measures cross-language retrieval
-only. These are small controlled results, not a general performance claim for all
-PDFs.
+On a 101-page lecture split into 18 chunks, two manually verified question sets
+were used to compare dense-retrieval ordering with reranked ordering. The original
+set has 10 Chinese questions. The reworded set has 16 narrower Chinese and English
+questions about the same evidence. These are small results from one document, not
+a general performance claim for all PDFs.
 
-| Candidate K | Method | Final sources | Hit | MRR |
-| ---: | --- | ---: | ---: | ---: |
-| 10 | Dense embedding only | 3 | 0.60 | 0.60 |
-| 10 | Dense embedding + reranking | 3 | 1.00 | 0.95 |
-| 20 | Dense embedding + reranking | 3 | 1.00 | 0.90 |
-| 20 | Dense embedding + reranking (answer default) | 2 | 1.00 | 0.90 |
-| 20 | Dense embedding + reranking | 1 | 0.80 | 0.80 |
+| Question set | Candidate K | Method | Final sources | Hit | MRR |
+| --- | ---: | --- | ---: | ---: | ---: |
+| Original | 10 | Dense embedding only | 3 | 0.80 | 0.47 |
+| Original | 20 | Dense embedding + reranking | 3 | 1.00 | 0.85 |
+| Original | 20 | Dense embedding + reranking (answer default) | 2 | 1.00 | 0.85 |
+| Original | 20 | Dense embedding + reranking | 1 | 0.70 | 0.70 |
+| Reworded | 20 | Dense embedding only | 3 | 0.69 | 0.63 |
+| Reworded | 20 | Dense embedding + reranking | 3 | 0.94 | 0.88 |
+| Reworded | 20 | Dense embedding + reranking (answer default) | 2 | 0.94 | 0.88 |
+| Reworded | 20 | Dense embedding + reranking | 1 | 0.81 | 0.81 |
 
 See [evals/README.md](evals/README.md) for labelling rules, commands, result
 interpretation, and worked examples.
@@ -450,5 +453,9 @@ different document topics before comparing methods.
 - The semantic models read at most 512 tokens, so overly long chunks are
   truncated by the model. Symbol-heavy text can still exceed this limit.
 - Short pages such as slides are packed together, so one chunk can cite several
-  pages.
+  pages (median 5 and at most 14 on the evaluation lecture). Generated answers
+  can name the wrong page inside that range.
+- Glyphs without a Unicode mapping and lines with no word or multi-digit number
+  are dropped, so formulas and figure labels are largely absent from retrieval.
+  Removals are counted in the parsed JSON.
 - Chunking is rule-based. Headings set off only by font size are not detected.

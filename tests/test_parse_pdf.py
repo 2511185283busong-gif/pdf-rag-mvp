@@ -9,11 +9,14 @@ SCRIPTS_DIR = Path(__file__).resolve().parents[1] / "scripts"
 sys.path.insert(0, str(SCRIPTS_DIR))
 
 from parse_pdf import (  # noqa: E402
+    count_unmapped_glyphs,
     extract_page_lines,
     find_repeated_lines,
     lines_to_text,
     normalize_text,
+    split_low_information_lines,
     split_repeated_lines,
+    strip_unmapped_glyphs,
 )
 
 
@@ -37,6 +40,47 @@ class ExtractionTests(unittest.TestCase):
 
     def test_small_cap_glyphs_become_ascii(self) -> None:
         self.assertEqual(normalize_text("?(j, x)"), "ok?(j, x)")
+
+
+class NoiseTests(unittest.TestCase):
+    def test_unmapped_glyphs_are_stripped(self) -> None:
+        class FakePage:
+            def extract_text_lines(self, **kwargs: object) -> list[dict]:
+                return [
+                    {"text": "x = (cid:8) (cid:8) end", "top": 1, "bottom": 2},
+                    {"text": "(cid:8) (cid:8)", "top": 3, "bottom": 4},
+                ]
+
+        lines = extract_page_lines(FakePage())
+
+        self.assertEqual(strip_unmapped_glyphs("keeps  its spacing"), "keeps  its spacing")
+        self.assertEqual([item["text"] for item in lines], ["x = end"])
+
+    def test_unmapped_glyphs_are_counted_from_page_characters(self) -> None:
+        class FakePage:
+            chars = [{"text": "(cid:8)"}, {"text": "x"}, {"text": "(cid:12)"}]
+
+        self.assertEqual(count_unmapped_glyphs(FakePage()), 2)
+
+    def test_small_cap_lines_count_as_content(self) -> None:
+        class FakePage:
+            def extract_text_lines(self, **kwargs: object) -> list[dict]:
+                return [{"text": "\uf772\uf765\uf776(x, y)", "top": 1, "bottom": 2}]
+
+        kept, removed = split_low_information_lines(extract_page_lines(FakePage()))
+
+        self.assertEqual([item["text"] for item in kept], ["rev(x, y)"])
+        self.assertEqual(removed, [])
+
+    def test_lines_without_content_are_separated(self) -> None:
+        contentful = ["ok?(x ,,0) =", "Year 2024", "12 34 56", "第一", "是", "2 then return"]
+        fragments = ["x = ∨x =", "1 2 1 2 1 2", "¬(x = ∧x = )", "n", ")"]
+        lines = [line(text, 100) for text in contentful + fragments]
+
+        kept, removed = split_low_information_lines(lines)
+
+        self.assertEqual([item["text"] for item in kept], contentful)
+        self.assertEqual([item["text"] for item in removed], fragments)
 
 
 class RepeatedLineTests(unittest.TestCase):

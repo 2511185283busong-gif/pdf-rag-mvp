@@ -30,6 +30,49 @@ class ContextBuilderTests(unittest.TestCase):
 
         self.assertEqual(chunk_context_text(chunk), "[p3] first [p4] second")
 
+    @patch("context_builder.rerank_search")
+    def test_sources_below_the_minimum_score_are_dropped(self, rerank_search) -> None:
+        chunks = {
+            "source": {},
+            "chunks": [
+                {"chunk_id": "keep", "chunk_index": 0, "text": "relevant"},
+                {"chunk_id": "drop", "chunk_index": 1, "text": "unrelated"},
+            ],
+        }
+        rerank_search.return_value = {
+            "results": [
+                {
+                    "chunk_id": chunk_id,
+                    "chunk_index": index,
+                    "page_range": "1",
+                    "source_pages": [1],
+                    "rerank_rank": index + 1,
+                    "rerank_score": score,
+                    "base_rank": index + 1,
+                    "base_similarity": 0.5,
+                }
+                for index, (chunk_id, score) in enumerate([("keep", -4.9), ("drop", -5.1)])
+            ],
+            "method": {},
+            "input": {},
+        }
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "chunks.json"
+            path.write_text(json.dumps(chunks), encoding="utf-8")
+            result = build_context(
+                chunks_json_path=path,
+                query="q",
+                top_k=2,
+                candidate_k=2,
+                embedding_model="e",
+                rerank_model="r",
+                max_context_chars=3000,
+                max_chunk_chars=1200,
+            )
+
+        self.assertEqual([source["chunk_id"] for source in result["sources"]], ["keep"])
+
     def test_older_chunks_fall_back_to_plain_text(self) -> None:
         self.assertEqual(chunk_context_text({"text": "plain"}), "plain")
 

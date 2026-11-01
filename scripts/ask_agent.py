@@ -62,6 +62,7 @@ TOOLS: list[dict[str, Any]] = [
 ]
 
 
+MAX_QUERY_CHARS = 2000
 AGENT_SYSTEM_PROMPT = """You are a bounded PDF document agent.
 You may only use the provided tools to obtain document information. For a question
 about document facts, call retrieve_pdf exactly once before answering. For a
@@ -161,8 +162,8 @@ def validate_tool_arguments(tool_name: str, arguments: Any) -> dict[str, Any]:
     if set(arguments) != {"query"} or not isinstance(arguments.get("query"), str):
         raise RuntimeError("retrieve_pdf requires exactly one string argument: query.")
     query = arguments["query"].strip()
-    if not query or len(query) > 2000:
-        raise RuntimeError("retrieve_pdf query must contain 1-2000 characters.")
+    if not query or len(query) > MAX_QUERY_CHARS:
+        raise RuntimeError(f"retrieve_pdf query must contain 1-{MAX_QUERY_CHARS} characters.")
     return {"query": query}
 
 
@@ -301,9 +302,13 @@ def run_agent(
         tool_choice="required",
     )
     tool_call = parse_tool_call(planning_response)
+    arguments = tool_call["arguments"]
+    if tool_call["name"] == "retrieve_pdf":
+        # A one-turn agent has no context to resolve, and a rewrite can lose the evidence.
+        arguments = {"query": query.strip()[:MAX_QUERY_CHARS]}
     tool_result, sources = execute_tool(
         tool_name=tool_call["name"],
-        arguments=tool_call["arguments"],
+        arguments=arguments,
         chunks_json_path=chunks_json_path,
         top_k=top_k,
         candidate_k=candidate_k,
@@ -344,7 +349,7 @@ def run_agent(
             {
                 "step": 1,
                 "tool": tool_call["name"],
-                "arguments": tool_call["arguments"],
+                "arguments": arguments,
                 "source_count": len(sources),
             }
         ],

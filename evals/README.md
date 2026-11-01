@@ -21,32 +21,46 @@ Run the evaluation after creating the lecture chunks:
 
 Evaluation configuration:
 
-- 36 chunks from a 101-page lecture.
-- 10 manually verified questions.
+- 32 chunks from a 101-page lecture.
+- 10 manually verified questions, all in Chinese against an English lecture.
 - `intfloat/multilingual-e5-small` for dense recall.
 - `cross-encoder/mmarco-mMiniLMv2-L12-H384-v1` for reranking.
-- Top 3 final results.
 
-| Candidate K | Method | Hit@3 | MRR@3 |
-| ---: | --- | ---: | ---: |
-| 10 | Dense embedding only | 0.70 | 0.60 |
-| 10 | Dense embedding plus rerank | 0.90 | 0.80 |
-| 20 | Dense embedding plus rerank | 1.00 | 0.7833 |
-| 36 | Dense embedding plus rerank | 1.00 | 0.80 |
+| Candidate K | Method | Final sources | Hit | MRR |
+| ---: | --- | ---: | ---: | ---: |
+| 10 | Dense embedding only | 3 | 0.60 | 0.60 |
+| 10 | Dense embedding plus rerank | 3 | 1.00 | 0.95 |
+| 20 | Dense embedding plus rerank | 3 | 1.00 | 0.90 |
+| 32 | Dense embedding plus rerank | 3 | 1.00 | 0.90 |
+| 20 | Dense embedding plus rerank (answer default) | 2 | 1.00 | 0.90 |
+| 20 | Dense embedding plus rerank | 1 | 0.80 | 0.80 |
 
-Increasing Candidate K gives reranking more recall candidates to inspect. On
-this 36-chunk lecture, K=20 is sufficient to place evidence for every labelled
-question in the final Top 3. K=36 is a diagnostic full-rerank setting, not a
-practical default for larger collections.
+K=32 is a diagnostic full-rerank setting, not a practical default for larger
+collections. On this lecture K=10 already places all evidence in the Top 3, and
+its MRR is higher than at K=20. Candidate K is therefore a recall-versus-ranking
+tradeoff, not a value that always improves every metric.
 
-K=20 improves coverage over K=10, but its MRR is slightly lower because some
-correct chunks move from rank 1 to rank 2 or 3. Candidate K is therefore a
-recall-versus-ranking-cost tradeoff, not a value that always improves every
-metric.
+The ABT completeness case accepts both chunks 0016 and 0017: the theorem on page
+50 occurs at their chunk boundary. This keeps the labels aligned with the evidence
+rather than treating a valid overlap hit as a miss.
 
-The Filtering limitation case accepts both chunks 0002 and 0003: the relevant
-slide is page 14, which occurs at their chunk boundary. This keeps the labels
-aligned with the evidence rather than treating a valid overlap hit as a miss.
+### Effect of the extraction and chunking fix
+
+The earlier extraction lost spaces between words, and lost small-capital terms
+such as `ok` and `nogood`. Repeated slide headers also entered every chunk. With
+the same 10 questions and K=20, retrieval before and after the fix compares as
+follows:
+
+| Final sources | Reranked Hit before | Reranked Hit after | Reranked MRR before | Reranked MRR after |
+| ---: | ---: | ---: | ---: | ---: |
+| 3 | 1.00 | 1.00 | 0.78 | 0.90 |
+| 2 | 0.90 | 1.00 | 0.75 | 0.90 |
+| 1 | 0.60 | 0.80 | 0.60 | 0.80 |
+
+Dense-only Hit@3 fell from 0.70 to 0.60, so the gain comes from reranking. Chunk
+ids changed with the fix, so the labels were re-verified against the new chunks
+using the recorded `verified_pages`. The questions are the same, but the two runs
+are not a controlled comparison of identical labels.
 
 This is a small benchmark result rather than a general performance claim.
 
@@ -66,7 +80,7 @@ How are useful passages selected for a question?
 
 TF-IDF therefore produced an all-zero tie across the original chunks. Dense
 embedding with `intfloat/multilingual-e5-small` placed
-`resume2_chunk_0001` first (cosine `0.776867`), which contains the candidate's
+`resume2_chunk_0001` first (cosine `0.776868`), which contains the candidate's
 RAG retrieval and semantic-search learning material. This is an example of
 dense retrieval helping with a wording mismatch, not proof that it is always
 better.
@@ -91,18 +105,17 @@ Reproduce the comparison:
 ### 2. Reranking a recalled candidate
 
 For the manually labelled lecture question below, the correct evidence is
-`Lecture 8b Distributed Constraints_chunk_0014` (pages 36-39):
+`Lecture 8b Distributed Constraints_chunk_0011` (pages 29-37):
 
 ```text
-What are the roles of ok, nogood, and add-neighbor messages in asynchronous backtracking (ABT)?
+异步回溯（ABT）中的 ok、nogood 和 add-neighbor 消息分别有什么作用？
 ```
 
-With `candidate-k=10`, embedding-only Top 3 returned chunks `0021`, `0015`,
-and `0022`, so the correct chunk was not visible in Top 3. It was still inside
-the 10 recalled candidates. The cross-encoder reranker moved chunk `0014` to
-rank 1. This illustrates the intended division of work: dense retrieval
-provides candidate coverage, then reranking performs a more precise
-query-chunk comparison.
+With `candidate-k=10`, embedding-only Top 3 returned chunks `0012`, `0018`, and
+`0016`, so the correct chunk was not visible in Top 3. It was still inside the 10
+recalled candidates. The cross-encoder reranker moved chunk `0011` to rank 1. This
+illustrates the intended division of work: dense retrieval provides candidate
+coverage, then reranking performs a more precise query-chunk comparison.
 
 Run the full 10-question report:
 

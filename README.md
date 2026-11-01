@@ -30,7 +30,10 @@ flowchart LR
 ## Highlights
 
 - Page-level PDF parsing with page metadata carried through to final citations.
-- Rule-based semantic chunking with overlap and source-page provenance.
+- Font-size-aware word spacing, small-capital glyph recovery, and removal of
+  repeated headers and footers.
+- Rule-based chunking on paragraphs, bullets, headings, and English or Chinese
+  sentences, with overlap and source-page provenance.
 - Multilingual dense retrieval using `intfloat/multilingual-e5-small`.
 - Cross-encoder reranking using `cross-encoder/mmarco-mMiniLMv2-L12-H384-v1`.
 - Evidence-bounded DeepSeek answers with source IDs and page ranges.
@@ -39,15 +42,19 @@ flowchart LR
 
 ## Verified Retrieval Improvement
 
-On a 101-page lecture split into 36 chunks, 10 manually verified questions
-were used to compare dense-retrieval ordering with reranked ordering. These are
-small controlled results, not a general performance claim for all PDFs.
+On a 101-page lecture split into 32 chunks, 10 manually verified questions were
+used to compare dense-retrieval ordering with reranked ordering. All 10 questions
+are Chinese and the lecture is English, so this measures cross-language retrieval
+only. These are small controlled results, not a general performance claim for all
+PDFs.
 
-| Candidate K | Method | Hit@3 | MRR@3 |
-| ---: | --- | ---: | ---: |
-| 10 | Dense embedding only | 0.70 | 0.60 |
-| 10 | Dense embedding + reranking | 0.90 | 0.80 |
-| 20 | Dense embedding + reranking | 1.00 | 0.7833 |
+| Candidate K | Method | Final sources | Hit | MRR |
+| ---: | --- | ---: | ---: | ---: |
+| 10 | Dense embedding only | 3 | 0.60 | 0.60 |
+| 10 | Dense embedding + reranking | 3 | 1.00 | 0.95 |
+| 20 | Dense embedding + reranking | 3 | 1.00 | 0.90 |
+| 20 | Dense embedding + reranking (answer default) | 2 | 1.00 | 0.90 |
+| 20 | Dense embedding + reranking | 1 | 0.80 | 0.80 |
 
 See [evals/README.md](evals/README.md) for labelling rules, commands, result
 interpretation, and worked examples.
@@ -180,8 +187,9 @@ or model downloads:
 
 A page can contain definitions, examples, and unrelated material. Embedding the
 whole page mixes these meanings, reduces retrieval precision, and places too
-much text in the LLM context. This project first forms paragraph- and
-sentence-level semantic units, then packs them into target-sized chunks.
+much text in the LLM context. This project first forms units from paragraphs,
+bullets, and headings, splits oversized units at sentence boundaries, then packs
+them into target-sized chunks.
 
 ### Why preserve page metadata?
 
@@ -224,7 +232,7 @@ The output records document metadata and page-level text:
 
 ```json
 {
-  "schema_version": "0.1.0",
+  "schema_version": "0.2.0",
   "source": {
     "path": "/path/to/course.pdf",
     "file_name": "course.pdf",
@@ -253,8 +261,12 @@ python3 scripts/chunk_json.py parsed/course.json
 ```
 
 The default output is `chunks/course_chunks.json`. Chunks are built from
-paragraph and sentence units, then packed to a target length. Page numbers are
-provenance metadata, not hard chunk boundaries.
+paragraph, bullet, and heading units, then packed to a target length. Size limits
+count a CJK ideograph as two characters because it costs roughly twice as many
+model tokens. Page numbers are provenance metadata, not hard chunk boundaries.
+
+Parsing and chunking changes alter chunk ids. Rebuild `parsed/` and `chunks/`
+after upgrading, and re-verify any retrieval labels against the new chunks.
 
 ```json
 {
@@ -436,4 +448,7 @@ different document topics before comparing methods.
 - No persistent vector database is used; embeddings are recomputed in memory
   for each PDF.
 - The semantic models read at most 512 tokens, so overly long chunks are
-  truncated by the model.
+  truncated by the model. Symbol-heavy text can still exceed this limit.
+- Short pages such as slides are packed together, so one chunk can cite several
+  pages.
+- Chunking is rule-based. Headings set off only by font size are not detected.

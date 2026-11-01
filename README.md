@@ -1,5 +1,7 @@
 # PDF RAG MVP
 
+[![Tests](https://github.com/2511185283busong-gif/pdf-rag-mvp/actions/workflows/tests.yml/badge.svg)](https://github.com/2511185283busong-gif/pdf-rag-mvp/actions/workflows/tests.yml)
+
 A local, traceable question-answering prototype for text-layer PDFs. It parses a
 PDF into page-aware JSON, creates provenance-preserving chunks, retrieves
 evidence with multilingual dense embeddings, reranks candidates with a
@@ -36,9 +38,47 @@ flowchart LR
   sentences, with overlap and source-page provenance.
 - Multilingual dense retrieval using `intfloat/multilingual-e5-small`.
 - Cross-encoder reranking using `cross-encoder/mmarco-mMiniLMv2-L12-H384-v1`.
-- Evidence-bounded DeepSeek answers with source IDs and page ranges.
+- Evidence-bounded DeepSeek answers citing source IDs and exact pages, with a check
+  that flags citations outside the retrieved sources.
 - A Streamlit demo for PDF upload, question answering, and source inspection.
-- Manually labelled retrieval evaluation with Hit@K and MRR@K.
+- Manually labelled retrieval evaluation with Hit@K and MRR@K on two documents,
+  plus unit tests in CI.
+
+## What the Evaluation Changed
+
+Most of this project's lessons came from measuring it, and several came from
+results that contradicted the plan.
+
+**A perfect score hid a weakness.** After the first extraction fixes, the original
+questions reached Top 2 Hit 1.00. Narrower rewordings of the same questions scored
+0.75. Formula slides turned out to be about half `(cid:N)` placeholders, and those
+chunks outranked real evidence. Removing that noise raised the reworded score to 0.94.
+
+**Citations looked right but were not.** Context only gave each chunk's page range,
+so the model guessed a page inside it. Only 6 of 25 answers cited the page holding
+the evidence. Marking each page in the context raised that to 25 of 25 in one run.
+
+**Three ideas lost to the data and were not built.**
+
+| Idea | Result | Decision |
+| --- | --- | --- |
+| Hybrid keyword and reranker retrieval | Original Top 2 Hit fell from 1.00 to 0.80 | Kept the reranker alone |
+| Agent retries or query fusion | Original question, rewrite and fusion all hit 25 of 26 | Search with the user's own question, since rewrites only added variance |
+| Smaller chunks | 300 characters scored best, but 200 and 400 were worse | Kept the default until another document can confirm it |
+
+**A second document found what the first could not.** A generated Chinese manual
+showed that a noise filter was deleting real table rows, and that some PDFs encode
+common ideographs as look-alike radicals. Both are fixed. Its near-perfect scores are
+not treated as evidence of quality, because the same author wrote the manual and its
+questions.
+
+**Regression checks caught my own fixes.** The noise filter first deleted pseudo-code
+lines written in small capitals, and the table fix first brought subscripts back.
+Rerunning the lecture exposed both before they shipped.
+
+What remains weak is listed under [Limitations](#limitations). In particular, no
+relevance threshold cleanly separates answerable from unanswerable questions, and no
+real Chinese document has been tested.
 
 ## Verified Retrieval Improvement
 
@@ -80,7 +120,10 @@ interpretation, and worked examples.
 1. Install the dependencies:
 
 ```bash
-python3 -m pip install -r requirements.txt
+python3 -m venv .venv
+```
+
+```bash
 .venv/bin/python -m pip install -r requirements-semantic.txt
 ```
 

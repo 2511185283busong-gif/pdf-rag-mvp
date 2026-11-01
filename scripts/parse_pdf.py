@@ -17,7 +17,7 @@ from typing import Any
 import pdfplumber
 
 
-SCHEMA_VERSION = "0.2.0"
+SCHEMA_VERSION = "0.3.0"
 
 # Gaps wider than this fraction of the font size become word breaks. A fixed
 # tolerance glues words together when a small font's space is narrower than it.
@@ -27,6 +27,12 @@ SMALL_CAPS_TO_ASCII = {
     code_point: chr(ord("a") + code_point - 0xF761)
     for code_point in range(0xF761, 0xF77B)
 }
+# pdfminer writes this placeholder for a glyph with no Unicode mapping. It carries
+# no text, and on formula-heavy pages it can make up half of a chunk.
+UNMAPPED_GLYPH = re.compile(r"\(cid:\d+\)")
+# A line needs a word, a multi-digit number or an ideograph to count as content.
+# Formula fragments such as "x = ∨x =" and subscript rows such as "1 2 1 2" have none.
+LINE_CONTENT = re.compile(r"[^\W\d_]{2,}|\d{2,}|[\u4e00-\u9fff]")
 PARAGRAPH_GAP_RATIO = 1.5
 HEADER_FOOTER_BAND = 0.15
 REPEATED_LINE_MIN_PAGES = 3
@@ -49,16 +55,37 @@ def normalize_text(text: str) -> str:
     return text.strip()
 
 
+def strip_unmapped_glyphs(text: str) -> str:
+    stripped = UNMAPPED_GLYPH.sub("", text)
+    return " ".join(stripped.split()) if stripped != text else text
+
+
 def extract_page_lines(page: Any) -> list[dict[str, Any]]:
     lines = page.extract_text_lines(
         x_tolerance_ratio=X_TOLERANCE_RATIO,
         return_chars=False,
     )
-    return [
-        {"text": line["text"], "top": float(line["top"]), "bottom": float(line["bottom"])}
-        for line in lines
-        if line["text"].strip()
-    ]
+    extracted = []
+    for line in lines:
+        # Small capitals become letters here so the content check can read them.
+        text = strip_unmapped_glyphs(line["text"]).translate(SMALL_CAPS_TO_ASCII)
+        if text.strip():
+            extracted.append(
+                {"text": text, "top": float(line["top"]), "bottom": float(line["bottom"])}
+            )
+    return extracted
+
+
+def count_unmapped_glyphs(page: Any) -> int:
+    return sum(1 for char in page.chars if UNMAPPED_GLYPH.fullmatch(char["text"]))
+
+
+def split_low_information_lines(
+    lines: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    kept = [line for line in lines if LINE_CONTENT.search(line["text"])]
+    removed = [line for line in lines if not LINE_CONTENT.search(line["text"])]
+    return kept, removed
 
 
 def repeated_line_key(text: str) -> str:
@@ -170,6 +197,7 @@ def parse_pdf(pdf_path: Path, min_text_chars: int) -> dict[str, Any]:
             kept_lines, removed_lines = split_repeated_lines(
                 lines, page_heights[page_index], repeated_keys
             )
+            kept_lines, low_information_lines = split_low_information_lines(kept_lines)
             removed_lines = [normalize_text(line) for line in removed_lines]
             for line in removed_lines:
                 repeated_lines.setdefault(repeated_line_key(line), line)
@@ -187,6 +215,8 @@ def parse_pdf(pdf_path: Path, min_text_chars: int) -> dict[str, Any]:
                     "needs_ocr": needs_ocr,
                     "text": text,
                     "removed_lines": removed_lines,
+                    "low_information_lines_removed": len(low_information_lines),
+                    "unmapped_glyphs_removed": count_unmapped_glyphs(page),
                     "extraction_error": extraction_errors[page_index],
                 }
             )
@@ -212,6 +242,10 @@ def parse_pdf(pdf_path: Path, min_text_chars: int) -> dict[str, Any]:
             "page_count": len(pages),
             "metadata": metadata,
             "repeated_lines_removed": sorted(repeated_lines.values()),
+            "low_information_lines_removed": sum(
+                page["low_information_lines_removed"] for page in pages
+            ),
+            "unmapped_glyphs_removed": sum(page["unmapped_glyphs_removed"] for page in pages),
         },
         "pages": pages,
         "warnings": warnings,

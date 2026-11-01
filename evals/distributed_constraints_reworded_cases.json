@@ -1,0 +1,186 @@
+{
+  "document": "Lecture 8b Distributed Constraints.pdf",
+  "cases": [
+    {
+      "id": "r-dcsp-en",
+      "query": "How is a distributed constraint satisfaction problem defined?",
+      "relevant_chunk_ids": [
+        "Lecture 8b Distributed Constraints_chunk_0000",
+        "Lecture 8b Distributed Constraints_chunk_0015"
+      ],
+      "verified_pages": [
+        6
+      ],
+      "evidence": "Give each agent one of the variables"
+    },
+    {
+      "id": "r-dcsp-zh",
+      "query": "在 DCSP 里每个智能体负责什么？",
+      "relevant_chunk_ids": [
+        "Lecture 8b Distributed Constraints_chunk_0000",
+        "Lecture 8b Distributed Constraints_chunk_0015"
+      ],
+      "verified_pages": [
+        6
+      ],
+      "evidence": "Give each agent one of the variables"
+    },
+    {
+      "id": "r-filter-en",
+      "query": "What can the filtering algorithm fail to detect?",
+      "relevant_chunk_ids": [
+        "Lecture 8b Distributed Constraints_chunk_0001"
+      ],
+      "verified_pages": [
+        14
+      ],
+      "evidence": "Filtering fails to detect no-solution"
+    },
+    {
+      "id": "r-kcons-zh",
+      "query": "什么叫 k 一致性？",
+      "relevant_chunk_ids": [
+        "Lecture 8b Distributed Constraints_chunk_0001"
+      ],
+      "verified_pages": [
+        16
+      ],
+      "evidence": "Given any instantiation of any k"
+    },
+    {
+      "id": "r-ok-zh",
+      "query": "ABT 中 ok? 消息是用来做什么的？",
+      "relevant_chunk_ids": [
+        "Lecture 8b Distributed Constraints_chunk_0004"
+      ],
+      "verified_pages": [
+        37
+      ],
+      "evidence": "This message asks the receiver"
+    },
+    {
+      "id": "r-nogood-en",
+      "query": "What does a nogood message mean in asynchronous backtracking?",
+      "relevant_chunk_ids": [
+        "Lecture 8b Distributed Constraints_chunk_0004"
+      ],
+      "verified_pages": [
+        37
+      ],
+      "evidence": "is reporting that it"
+    },
+    {
+      "id": "r-addn-zh",
+      "query": "add-neighbor 消息请求接收方做什么？",
+      "relevant_chunk_ids": [
+        "Lecture 8b Distributed Constraints_chunk_0004"
+      ],
+      "verified_pages": [
+        37
+      ],
+      "evidence": "requests the agent to add"
+    },
+    {
+      "id": "r-abt-en",
+      "query": "Is ABT guaranteed to find a solution if one exists?",
+      "relevant_chunk_ids": [
+        "Lecture 8b Distributed Constraints_chunk_0007"
+      ],
+      "verified_pages": [
+        50
+      ],
+      "evidence": "ABT is Complete"
+    },
+    {
+      "id": "r-awc-zh",
+      "query": "AWC 选新值时要最小化什么？",
+      "relevant_chunk_ids": [
+        "Lecture 8b Distributed Constraints_chunk_0007",
+        "Lecture 8b Distributed Constraints_chunk_0008"
+      ],
+      "verified_pages": [
+        52
+      ],
+      "evidence": "minimizes constraint"
+    },
+    {
+      "id": "r-awccomp-en",
+      "query": "Why is AWC complete?",
+      "relevant_chunk_ids": [
+        "Lecture 8b Distributed Constraints_chunk_0011"
+      ],
+      "verified_pages": [
+        62
+      ],
+      "evidence": "AWC is complete"
+    },
+    {
+      "id": "r-breakout-zh",
+      "query": "Distributed Breakout 为什么不完备？",
+      "relevant_chunk_ids": [
+        "Lecture 8b Distributed Constraints_chunk_0013",
+        "Lecture 8b Distributed Constraints_chunk_0014"
+      ],
+      "verified_pages": [
+        80
+      ],
+      "evidence": "can get stuck in local optima"
+    },
+    {
+      "id": "r-threshold-zh",
+      "query": "ADOPT 算法中的 threshold 消息传递什么信息？",
+      "relevant_chunk_ids": [
+        "Lecture 8b Distributed Constraints_chunk_0015"
+      ],
+      "verified_pages": [
+        85
+      ],
+      "evidence": "tell children how much cost"
+    },
+    {
+      "id": "r-threshold-en",
+      "query": "What does the threshold message do in Adopt?",
+      "relevant_chunk_ids": [
+        "Lecture 8b Distributed Constraints_chunk_0015"
+      ],
+      "verified_pages": [
+        85
+      ],
+      "evidence": "tell children how much cost"
+    },
+    {
+      "id": "r-value-zh",
+      "query": "ADOPT 中 value 消息告诉谁什么？",
+      "relevant_chunk_ids": [
+        "Lecture 8b Distributed Constraints_chunk_0015"
+      ],
+      "verified_pages": [
+        85
+      ],
+      "evidence": "tell descendants what value"
+    },
+    {
+      "id": "r-cost-en",
+      "query": "What does the cost message tell the parent in Adopt?",
+      "relevant_chunk_ids": [
+        "Lecture 8b Distributed Constraints_chunk_0015",
+        "Lecture 8b Distributed Constraints_chunk_0016"
+      ],
+      "verified_pages": [
+        85
+      ],
+      "evidence": "tell parent lower"
+    },
+    {
+      "id": "r-compare-en",
+      "query": "When is OptAPO preferable to Adopt?",
+      "relevant_chunk_ids": [
+        "Lecture 8b Distributed Constraints_chunk_0017"
+      ],
+      "verified_pages": [
+        101
+      ],
+      "evidence": "OptAPO is better when"
+    }
+  ]
+}

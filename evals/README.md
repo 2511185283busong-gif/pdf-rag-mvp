@@ -3,9 +3,11 @@
 ## Distributed Constraints Lecture
 
 `distributed_constraints_cases.json` contains 10 manually verified retrieval
-cases for `Lecture 8b Distributed Constraints.pdf`. The source PDF is local
-and is not committed to this repository. Each case records the expected chunk
-and the original slide page that was checked during labeling.
+cases for `Lecture 8b Distributed Constraints.pdf`.
+`distributed_constraints_reworded_cases.json` adds 16 narrower Chinese and English
+questions about the same evidence, written to expose wording sensitivity. The
+source PDF is local and is not committed to this repository. Each case records the
+expected chunks and the original slide page that was checked during labeling.
 
 Run the evaluation after creating the lecture chunks:
 
@@ -21,28 +23,39 @@ Run the evaluation after creating the lecture chunks:
 
 Evaluation configuration:
 
-- 32 chunks from a 101-page lecture.
-- 10 manually verified questions, all in Chinese against an English lecture.
+- 18 chunks from a 101-page lecture.
 - `intfloat/multilingual-e5-small` for dense recall.
 - `cross-encoder/mmarco-mMiniLMv2-L12-H384-v1` for reranking.
 
+Original set (10 Chinese questions):
+
 | Candidate K | Method | Final sources | Hit | MRR |
 | ---: | --- | ---: | ---: | ---: |
-| 10 | Dense embedding only | 3 | 0.60 | 0.60 |
-| 10 | Dense embedding plus rerank | 3 | 1.00 | 0.95 |
-| 20 | Dense embedding plus rerank | 3 | 1.00 | 0.90 |
-| 32 | Dense embedding plus rerank | 3 | 1.00 | 0.90 |
-| 20 | Dense embedding plus rerank (answer default) | 2 | 1.00 | 0.90 |
-| 20 | Dense embedding plus rerank | 1 | 0.80 | 0.80 |
+| 10 | Dense embedding only | 3 | 0.80 | 0.47 |
+| 10 | Dense embedding plus rerank | 3 | 1.00 | 0.85 |
+| 20 | Dense embedding plus rerank | 3 | 1.00 | 0.85 |
+| 18 | Dense embedding plus rerank (all chunks) | 3 | 1.00 | 0.85 |
+| 20 | Dense embedding plus rerank (answer default) | 2 | 1.00 | 0.85 |
+| 20 | Dense embedding plus rerank | 1 | 0.70 | 0.70 |
 
-K=32 is a diagnostic full-rerank setting, not a practical default for larger
-collections. On this lecture K=10 already places all evidence in the Top 3, and
-its MRR is higher than at K=20. Candidate K is therefore a recall-versus-ranking
-tradeoff, not a value that always improves every metric.
+Reworded set (16 Chinese and English questions):
 
-The ABT completeness case accepts both chunks 0016 and 0017: the theorem on page
-50 occurs at their chunk boundary. This keeps the labels aligned with the evidence
-rather than treating a valid overlap hit as a miss.
+| Candidate K | Method | Final sources | Hit | MRR |
+| ---: | --- | ---: | ---: | ---: |
+| 20 | Dense embedding only | 3 | 0.69 | 0.63 |
+| 10 | Dense embedding plus rerank | 3 | 0.81 | 0.78 |
+| 20 | Dense embedding plus rerank | 3 | 0.94 | 0.88 |
+| 20 | Dense embedding plus rerank (answer default) | 2 | 0.94 | 0.88 |
+| 20 | Dense embedding plus rerank | 1 | 0.81 | 0.81 |
+
+Candidate K is a recall-versus-ranking tradeoff: K=10 matches K=20 on the original
+set but loses evidence on the reworded set. The one remaining reworded miss is
+`r-ok-zh`, where the correct chunk is not in the reranked Top 3.
+
+Relevant chunks are the ones whose text contains the recorded evidence sentence,
+so a sentence repeated on another slide or kept by chunk overlap can have several
+valid chunks. This keeps the labels aligned with the evidence rather than treating
+a valid hit as a miss.
 
 ### Effect of the extraction and chunking fix
 
@@ -61,6 +74,28 @@ Dense-only Hit@3 fell from 0.70 to 0.60, so the gain comes from reranking. Chunk
 ids changed with the fix, so the labels were re-verified against the new chunks
 using the recorded `verified_pages`. The questions are the same, but the two runs
 are not a controlled comparison of identical labels.
+
+### Effect of removing formula noise
+
+Lecture slides also produced 582 `(cid:N)` placeholders for glyphs with no Unicode
+mapping, and on formula slides they made up about half of a chunk. Removing them
+and the 911 lines left without a word or multi-digit number changes retrieval as
+follows, with K=20 and relevance taken from the evidence sentences on both sides:
+
+| Question set | Final sources | Hit before | Hit after | MRR before | MRR after |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Original | 3 | 1.00 | 1.00 | 0.90 | 0.85 |
+| Original | 2 | 1.00 | 1.00 | 0.90 | 0.85 |
+| Original | 1 | 0.80 | 0.70 | 0.80 | 0.70 |
+| Reworded | 3 | 0.81 | 0.94 | 0.74 | 0.88 |
+| Reworded | 2 | 0.75 | 0.94 | 0.72 | 0.88 |
+| Reworded | 1 | 0.69 | 0.81 | 0.69 | 0.81 |
+
+The reworded questions improve and the original questions lose some rank, so this
+is a tradeoff rather than a uniform gain. Chunks also span more pages: the median
+rose from 3 to 5 and the maximum from 10 to 14. The cleanup was chosen using these
+same questions, and removing placeholders alone lowered original Hit@2 to 0.90, so
+the reworded results are not an independent test.
 
 This is a small benchmark result rather than a general performance claim.
 
@@ -105,15 +140,15 @@ Reproduce the comparison:
 ### 2. Reranking a recalled candidate
 
 For the manually labelled lecture question below, the correct evidence is
-`Lecture 8b Distributed Constraints_chunk_0011` (pages 29-37):
+`Lecture 8b Distributed Constraints_chunk_0011` (pages 61-70):
 
 ```text
-异步回溯（ABT）中的 ok、nogood 和 add-neighbor 消息分别有什么作用？
+Asynchronous Weak-Commitment Search 是否完备？
 ```
 
-With `candidate-k=10`, embedding-only Top 3 returned chunks `0012`, `0018`, and
-`0016`, so the correct chunk was not visible in Top 3. It was still inside the 10
-recalled candidates. The cross-encoder reranker moved chunk `0011` to rank 1. This
+With `candidate-k=10`, embedding-only Top 3 returned chunks `0009`, `0010`, and
+`0008`, so the correct chunk was not visible in Top 3. It was still inside the 10
+recalled candidates. The cross-encoder reranker moved chunk `0011` to rank 2. This
 illustrates the intended division of work: dense retrieval provides candidate
 coverage, then reranking performs a more precise query-chunk comparison.
 

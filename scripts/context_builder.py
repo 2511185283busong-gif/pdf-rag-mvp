@@ -14,6 +14,11 @@ from rerank_search import DEFAULT_RERANK_MODEL, rerank_search
 from semantic_search import DEFAULT_MODEL
 
 
+# Logit from the default reranker. On-topic questions in the evaluation lecture
+# keep relevant chunks at -3.28 or above; another reranker needs its own value.
+DEFAULT_MIN_RERANK_SCORE = -5.0
+
+
 def compact_text(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
@@ -63,6 +68,7 @@ def build_context(
     max_context_chars: int,
     max_chunk_chars: int,
     local_files_only: bool = True,
+    min_rerank_score: float = DEFAULT_MIN_RERANK_SCORE,
 ) -> dict[str, Any]:
     data = json.loads(chunks_json_path.read_text(encoding="utf-8"))
     chunks = data.get("chunks", [])
@@ -83,7 +89,7 @@ def build_context(
     used_chars = 0
     for result in reranked["results"]:
         chunk = chunks_by_id.get(result["chunk_id"])
-        if not chunk:
+        if not chunk or result["rerank_score"] < min_rerank_score:
             continue
 
         source = {

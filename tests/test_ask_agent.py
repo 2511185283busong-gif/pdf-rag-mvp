@@ -271,7 +271,8 @@ class AgentRunTests(unittest.TestCase):
         self.assertEqual(tool_message["tool_call_id"], "call_1")
         self.assertEqual(json.loads(tool_message["content"]), retrieved if name == "retrieve_pdf" else metadata)
         if name == "retrieve_pdf":
-            retrieve.assert_called_once_with(query="fact?", **TOOL_SETTINGS)
+            retrieve.assert_called_once_with(query="PDF fact?", **TOOL_SETTINGS)
+            self.assertEqual(result["trace"][0]["arguments"], {"query": "PDF fact?"})
             status.assert_not_called()
         else:
             status.assert_called_once_with(TOOL_SETTINGS["chunks_json_path"])

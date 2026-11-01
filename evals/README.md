@@ -112,6 +112,20 @@ of the recorded evidence, in one DeepSeek run before and after:
 The remaining answer cites page 81 instead of 80, and page 81 repeats the same
 theorem. These are model outputs from one run, so they can vary between runs.
 
+### Agent queries and the relevance floor
+
+Comparing the agent's rewritten queries with the original questions across all 26
+questions gave the same Top 2 Hit of 25 of 26, and combining both added nothing.
+Rewrites vary between runs, though, and a run that rewrote one question to
+`ADOPT algorithm threshold message passing` lost the evidence, which the original
+question ranks first. The agent therefore retrieves with the original question.
+
+Sources below a reranker score of -5.0 are now left out of the context. Relevant
+chunks scored -3.28 or above, and the best chunk for 7 of 8 off-topic questions
+scored below -5.0. The eighth, about Raft, scored -3.63 and still reached the model,
+which declined to answer. The same questions chose this value, so it is not an
+independent test.
+
 This is a small benchmark result rather than a general performance claim.
 
 ## Worked Examples

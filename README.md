@@ -146,9 +146,11 @@ to one of two local tools:
 Python validates the tool name and JSON arguments before executing a tool. A
 successful run makes two non-thinking model requests: one to choose the tool,
 then one to answer from its result. There is no tool loop, shell execution,
-arbitrary API access, multi-agent planning, or long-term memory. This experiment
-does not change PDF parsing or retrieval capabilities, and no retrieval
-improvement has been measured for it.
+arbitrary API access, multi-agent planning, or long-term memory. The model chooses
+the tool, but `retrieve_pdf` always searches with the user's own question because
+a rewritten query can lose the evidence. This experiment does not change PDF
+parsing, and no retrieval improvement over the direct pipeline has been measured
+for it.
 
 After installing the semantic dependencies and setting `DEEPSEEK_API_KEY` as
 above, prepare a text-layer PDF of your own, then try a content question:
@@ -459,6 +461,10 @@ different document topics before comparing methods.
   page with `[p#]` so answers can cite one page, and `citation_check` flags a
   citation outside the retrieved sources. It cannot prove that the cited page holds
   the fact, and overlap text from an earlier page keeps the next page's marker.
+- Sources scoring below -5.0 on the default reranker are left out of the context.
+  This value comes from one lecture and eight off-topic questions, and another
+  reranker needs its own value. Off-topic questions above it rely on the model to
+  decline.
 - Glyphs without a Unicode mapping and lines with no word or multi-digit number
   are dropped, so formulas and figure labels are largely absent from retrieval.
   Removals are counted in the parsed JSON.

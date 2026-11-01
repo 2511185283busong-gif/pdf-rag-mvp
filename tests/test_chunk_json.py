@@ -128,6 +128,29 @@ class ChunkOverlapProvenanceTests(unittest.TestCase):
         self.assertEqual(chunks[1]["overlap_from_previous"], "")
         self.assertEqual(chunks[1]["page_range"], "2")
 
+    def test_page_segments_keep_text_with_its_page(self) -> None:
+        units = [
+            {"text": "a" * 10, "source_pages": [1]},
+            {"text": "b" * 10, "source_pages": [1]},
+            {"text": "c" * 10, "source_pages": [2]},
+        ]
+
+        chunk = chunk_units(
+            units=units,
+            document_id="example",
+            target_chars=100,
+            max_chars=200,
+            overlap_chars=0,
+        )[0]
+
+        self.assertEqual(
+            chunk["page_segments"],
+            [
+                {"page": 1, "text": f"{'a' * 10}\n\n{'b' * 10}"},
+                {"page": 2, "text": "c" * 10},
+            ],
+        )
+
     def test_unbroken_token_respects_max_chars(self) -> None:
         text = "a" * 2500
 

@@ -11,7 +11,7 @@ from unittest.mock import patch
 SCRIPTS_DIR = Path(__file__).resolve().parents[1] / "scripts"
 sys.path.insert(0, str(SCRIPTS_DIR))
 
-from context_builder import build_context, trim_text  # noqa: E402
+from context_builder import build_context, chunk_context_text, trim_text  # noqa: E402
 
 
 class ContextBuilderTests(unittest.TestCase):
@@ -21,6 +21,17 @@ class ContextBuilderTests(unittest.TestCase):
         self.assertTrue(truncated)
         self.assertEqual(text, "ab...")
         self.assertEqual(len(text), 5)
+
+    def test_context_text_marks_each_page(self) -> None:
+        chunk = {
+            "text": "first\n\nsecond",
+            "page_segments": [{"page": 3, "text": "first"}, {"page": 4, "text": "second"}],
+        }
+
+        self.assertEqual(chunk_context_text(chunk), "[p3] first [p4] second")
+
+    def test_older_chunks_fall_back_to_plain_text(self) -> None:
+        self.assertEqual(chunk_context_text({"text": "plain"}), "plain")
 
     @patch("context_builder.rerank_search")
     def test_context_including_headers_stays_within_budget(self, rerank_search) -> None:

@@ -139,6 +139,9 @@ if ask_clicked:
 
             st.subheader("Answer")
             st.markdown(result["answer"]["answer"])
+            invalid_citations = result["answer"]["citation_check"]["invalid"]
+            if invalid_citations:
+                st.warning(f"Citations not found in the sources: {', '.join(invalid_citations)}")
             render_sources(result["answer"]["sources"])
 
             with st.expander("Run details"):

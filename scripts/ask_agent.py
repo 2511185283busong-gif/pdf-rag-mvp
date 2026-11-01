@@ -145,7 +145,8 @@ def retrieve_pdf_tool(
                 for source in sources
             ],
             "instruction": (
-                "Use only this context for document facts. Cite source ids and the [p#] page of each fact."
+                "Use only this context for document facts. Cite source ids and the [p#] page of each fact. "
+                "Answer in the language of the user's question, even if the context uses another language."
             ),
         },
         sources,

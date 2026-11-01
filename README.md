@@ -42,22 +42,23 @@ flowchart LR
 
 ## Verified Retrieval Improvement
 
-On a 101-page lecture split into 18 chunks, two manually verified question sets
+On a 101-page lecture split into 19 chunks, two manually verified question sets
 were used to compare dense-retrieval ordering with reranked ordering. The original
 set has 10 Chinese questions. The reworded set has 16 narrower Chinese and English
-questions about the same evidence. These are small results from one document, not
-a general performance claim for all PDFs.
+questions about the same evidence. These are small results from one real document,
+not a general performance claim for all PDFs. A generated Chinese manual is covered
+in [evals/README.md](evals/README.md).
 
 | Question set | Candidate K | Method | Final sources | Hit | MRR |
 | --- | ---: | --- | ---: | ---: | ---: |
-| Original | 10 | Dense embedding only | 3 | 0.80 | 0.47 |
-| Original | 20 | Dense embedding + reranking | 3 | 1.00 | 0.85 |
-| Original | 20 | Dense embedding + reranking (answer default) | 2 | 1.00 | 0.85 |
-| Original | 20 | Dense embedding + reranking | 1 | 0.70 | 0.70 |
-| Reworded | 20 | Dense embedding only | 3 | 0.69 | 0.63 |
-| Reworded | 20 | Dense embedding + reranking | 3 | 0.94 | 0.88 |
-| Reworded | 20 | Dense embedding + reranking (answer default) | 2 | 0.94 | 0.88 |
-| Reworded | 20 | Dense embedding + reranking | 1 | 0.81 | 0.81 |
+| Original | 10 | Dense embedding only | 3 | 0.90 | 0.62 |
+| Original | 20 | Dense embedding + reranking | 3 | 1.00 | 0.90 |
+| Original | 20 | Dense embedding + reranking (answer default) | 2 | 1.00 | 0.90 |
+| Original | 20 | Dense embedding + reranking | 1 | 0.80 | 0.80 |
+| Reworded | 20 | Dense embedding only | 3 | 0.81 | 0.73 |
+| Reworded | 20 | Dense embedding + reranking | 3 | 0.94 | 0.91 |
+| Reworded | 20 | Dense embedding + reranking (answer default) | 2 | 0.94 | 0.91 |
+| Reworded | 20 | Dense embedding + reranking | 1 | 0.88 | 0.88 |
 
 See [evals/README.md](evals/README.md) for labelling rules, commands, result
 interpretation, and worked examples.
@@ -237,7 +238,7 @@ The output records document metadata and page-level text:
 
 ```json
 {
-  "schema_version": "0.3.0",
+  "schema_version": "0.4.0",
   "source": {
     "path": "/path/to/course.pdf",
     "file_name": "course.pdf",
@@ -457,16 +458,20 @@ different document topics before comparing methods.
 - The semantic models read at most 512 tokens, so overly long chunks are
   truncated by the model. Symbol-heavy text can still exceed this limit.
 - Short pages such as slides are packed together, so one chunk can cite several
-  pages (median 5 and at most 14 on the evaluation lecture). Context marks each
+  pages (median 5 and at most 12 on the evaluation lecture). Context marks each
   page with `[p#]` so answers can cite one page, and `citation_check` flags a
   citation outside the retrieved sources. It cannot prove that the cited page holds
   the fact, and overlap text from an earlier page keeps the next page's marker.
-- Sources scoring below -5.0 on the default reranker are left out of the context.
-  This value comes from one lecture and eight off-topic questions, and another
-  reranker needs its own value. With no sources left, a fixed reply is returned
-  without calling the model. Off-topic questions above it rely on the model to
-  decline.
+- Sources scoring below -5.0 on the default reranker are left out of the context,
+  and another reranker needs its own value. With no sources left, a fixed reply is
+  returned without calling the model. Relevant chunks scored as low as -4.4 and half
+  of the Chinese manual's unanswerable questions scored above -5.0, so many
+  unanswerable questions still rely on the model to decline.
+- Answers can come back in the language of the context instead of the question,
+  especially for English questions about Chinese documents.
 - Glyphs without a Unicode mapping and lines with no word or multi-digit number
   are dropped, so formulas and figure labels are largely absent from retrieval.
+  Rows of single digits are kept only at body text size, so small table text can
+  be lost.
   Removals are counted in the parsed JSON.
 - Chunking is rule-based. Headings set off only by font size are not detected.

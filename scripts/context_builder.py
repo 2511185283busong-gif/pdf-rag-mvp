@@ -14,8 +14,8 @@ from rerank_search import DEFAULT_RERANK_MODEL, rerank_search
 from semantic_search import DEFAULT_MODEL
 
 
-# Logit from the default reranker. On-topic questions in the evaluation lecture
-# keep relevant chunks at -3.28 or above; another reranker needs its own value.
+# Logit from the default reranker. On-topic questions in both evaluation documents
+# keep relevant chunks at -4.4 or above; another reranker needs its own value.
 DEFAULT_MIN_RERANK_SCORE = -5.0
 
 

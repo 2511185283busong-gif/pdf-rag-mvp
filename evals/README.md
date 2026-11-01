@@ -126,6 +126,29 @@ scored below -5.0. The eighth, about Raft, scored -3.63 and still reached the mo
 which declined to answer. The same questions chose this value, so it is not an
 independent test.
 
+When no source remains, a fixed reply in the question's language replaces the model
+call, so it cannot add outside facts. Eight questions run through both the agent
+and the direct pipeline all declined, including five that still reached the model.
+
+### Retrieval options that were not adopted
+
+Keyword search did not help. Fusing BM25 or dense ranks with the reranker by
+reciprocal rank never beat the reranker alone, and lowered original Top 2 Hit from
+1.00 to 0.80. `r-ok-zh` stays at rank 4 or lower in each option.
+
+Smaller chunks were too unstable to justify a new default, with K=20:
+
+| Target chars | Chunks | Original Hit@2 | Reworded Hit@2 | Reworded Hit@3 |
+| ---: | ---: | ---: | ---: | ---: |
+| 200 | 68 | 0.80 | 0.81 | 0.88 |
+| 300 | 47 | 1.00 | 0.94 | 1.00 |
+| 400 | 34 | 1.00 | 0.88 | 0.88 |
+| 600 | 23 | 1.00 | 0.88 | 0.94 |
+| 800 (default) | 18 | 1.00 | 0.94 | 0.94 |
+
+The 300-character result sits between two worse sizes and differs by one question,
+so it needs a second document before it can be trusted.
+
 This is a small benchmark result rather than a general performance claim.
 
 ## Worked Examples

@@ -56,7 +56,8 @@ chunks outranked real evidence. Removing that noise raised the reworded score to
 
 **Citations looked right but were not.** Context only gave each chunk's page range,
 so the model guessed a page inside it. Only 6 of 25 answers cited the page holding
-the evidence. Marking each page in the context raised that to 25 of 25 in one run.
+the evidence. Marking each page in the context raised that to 24 of 25 in one run;
+the other cited page 81, which repeats the theorem on page 80.
 
 **Three ideas lost to the data and were not built.**
 
